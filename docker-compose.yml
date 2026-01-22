@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: agent-framework-db
+    environment:
+      POSTGRES_DB: agent_framework
+      POSTGRES_USER: agent_user
+      POSTGRES_PASSWORD: agent_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
