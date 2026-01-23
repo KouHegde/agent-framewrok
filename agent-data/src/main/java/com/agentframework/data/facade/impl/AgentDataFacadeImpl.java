@@ -1,5 +1,6 @@
 package com.agentframework.data.facade.impl;
 
+import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
 import com.agentframework.data.entity.Agent;
 import com.agentframework.data.entity.AgentMcpServer;
@@ -27,7 +28,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional
-    public AgentDto getOrCreateAgent(String userId, String botId, String userConfig, List<String> mcpServerNames) {
+    public AgentDto getOrCreateAgent(String userId, String botId, String description, String goal,
+                                     List<String> mcpServerNames, AgentConfigDto config) {
         validate(userId, botId);
 
         Optional<Agent> existing = agentRepository.findByUserIdAndBotId(userId, botId);
@@ -37,30 +39,66 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         }
 
         Agent agent = new Agent(botId, userId);
-        agent.setUserConfig(userConfig);
+        agent.setDescription(description);
+        agent.setGoal(goal);
         addMcpServers(agent, mcpServerNames);
+
+        // Apply config if provided
+        if (config != null) {
+            applyConfig(agent, config);
+        }
 
         Agent saved = agentRepository.save(agent);
         log.info("Created agent {} for user: {}", saved.getId(), userId);
         return toDto(saved);
     }
 
+    private void applyConfig(Agent agent, AgentConfigDto config) {
+        if (config.ragScope() != null) {
+            agent.setRagScope(config.ragScope());
+        }
+        if (config.reasoningStyle() != null) {
+            agent.setReasoningStyle(config.reasoningStyle());
+        }
+        if (config.temperature() != null) {
+            agent.setTemperature(config.temperature());
+        }
+        if (config.retrieverType() != null) {
+            agent.setRetrieverType(config.retrieverType());
+        }
+        if (config.retrieverK() != null) {
+            agent.setRetrieverK(config.retrieverK());
+        }
+        if (config.executionMode() != null) {
+            agent.setExecutionMode(config.executionMode());
+        }
+        if (config.permissions() != null) {
+            agent.setPermissions(config.permissions());
+        }
+    }
+
     @Override
     @Transactional
-    public AgentDto updateAgent(UUID agentId, String userConfig, List<String> mcpServerNames) {
-        Agent agent = agentRepository.findById(agentId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+    public AgentDto updateAgentMcpServers(UUID agentId, List<String> mcpServerNames) {
+        Agent agent = findAgentOrThrow(agentId);
 
-        if (userConfig != null) {
-            agent.setUserConfig(userConfig);
-        }
         if (mcpServerNames != null) {
             agent.getMcpServers().clear();
             addMcpServers(agent, mcpServerNames);
         }
 
         Agent updated = agentRepository.save(agent);
-        log.info("Updated agent: {}", agentId);
+        log.info("Updated MCP servers for agent: {}", agentId);
+        return toDto(updated);
+    }
+
+    @Override
+    @Transactional
+    public AgentDto updateAgentConfig(UUID agentId, AgentConfigDto config) {
+        Agent agent = findAgentOrThrow(agentId);
+        applyConfig(agent, config);
+        Agent updated = agentRepository.save(agent);
+        log.info("Updated config for agent: {}", agentId);
         return toDto(updated);
     }
 
@@ -89,6 +127,11 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         log.info("Deleted agent: {}", agentId);
     }
 
+    private Agent findAgentOrThrow(UUID agentId) {
+        return agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+    }
+
     private void validate(String userId, String botId) {
         if (userId == null || userId.isBlank()) {
             throw new IllegalArgumentException("User ID cannot be null or blank");
@@ -113,8 +156,16 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                 agent.getId(),
                 agent.getBotId(),
                 agent.getUserId(),
-                agent.getUserConfig(),
+                agent.getDescription(),
+                agent.getGoal(),
                 mcpServerNames,
+                agent.getRagScope(),
+                agent.getReasoningStyle(),
+                agent.getTemperature(),
+                agent.getRetrieverType(),
+                agent.getRetrieverK(),
+                agent.getExecutionMode(),
+                agent.getPermissions(),
                 agent.getCreatedAt(),
                 agent.getUpdatedAt()
         );
