@@ -1,0 +1,59 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agent-framework
+
+# LLM Configuration (optional - for intelligent agent spec generation)
+llm:
+  provider: ${LLM_PROVIDER:none}  # Options: openai, anthropic, gemini, none
+  enabled: ${LLM_ENABLED:false}
+  api:
+    url: ${LLM_API_URL:}
+    key: ${LLM_API_KEY:}
+  model: ${LLM_MODEL:}
+
+# ========================================
+# MCP Server Configuration (HTTP Transport)
+# ========================================
+# MCP Servers expose HTTP endpoints with JSON-RPC protocol.
+#
+# Request Format:
+# {
+#   "jsonrpc": "2.0",
+#   "id": 1,
+#   "method": "tools/call",
+#   "params": {
+#     "name": "call_jira_rest_api",
+#     "arguments": {"endpoint": "issue/PROJ-123", "method": "GET"}
+#   }
+# }
+#
+# To start MCP servers in HTTP mode:
+#   uv run jira-mcp-server --transport http --port 8081
+#   uv run confluence-mcp-server --transport http --port 8082
+#   uv run github-mcp-server --transport http --port 8083
+# ========================================
+
+mcp:
+  # Jira MCP Server
+  jira:
+    url: ${MCP_JIRA_URL:}  # e.g., http://localhost:8081/mcp-webex-jira
+    pat-token: ${JIRA_PAT_TOKEN:}
+
+  # Confluence MCP Server
+  confluence:
+    url: ${MCP_CONFLUENCE_URL:}  # e.g., http://localhost:8082/mcp-webex-confluence
+    pat-token: ${CONFLUENCE_PAT_TOKEN:}
+
+  # GitHub MCP Server
+  github:
+    url: ${MCP_GITHUB_URL:}  # e.g., http://localhost:8083/mcp-webex-github
+    pat-token: ${GITHUB_PAT_TOKEN:}
+
+logging:
+  level:
+    root: INFO
+    com.agentframework: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG
