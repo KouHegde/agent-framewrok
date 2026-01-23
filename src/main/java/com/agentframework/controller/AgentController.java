@@ -1,76 +1,126 @@
 package com.agentframework.controller;
 
-import com.agentframework.common.dto.AgentConfigDto;
-import com.agentframework.common.dto.AgentDto;
+import com.agentframework.dto.AgentExecutionRequest;
+import com.agentframework.dto.AgentExecutionResponse;
+import com.agentframework.dto.AgentSpec;
 import com.agentframework.dto.CreateAgentRequest;
-import com.agentframework.facade.AgentFacade;
-import com.agentframework.facade.AgentFacade.AgentCreationResult;
+import com.agentframework.service.AgentExecutorService;
+import com.agentframework.service.MetaAgentService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 
+/**
+ * REST Controller for Agent operations.
+ *
+ * Endpoints:
+ * - POST /api/create-agent: Create agent spec from name + description
+ * - POST /api/run-agent: Execute an agent with a spec
+ * - POST /api/create-and-run-agent: Create and execute in one call
+ */
+@Slf4j
 @RestController
-@RequestMapping("/api/agents")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class AgentController {
 
-    private final AgentFacade agentFacade;
+    private final MetaAgentService metaAgentService;
+    private final AgentExecutorService agentExecutorService;
 
-    @PostMapping
-    public ResponseEntity<AgentCreationResult> createAgent(@RequestBody CreateAgentRequest request) {
-        return ResponseEntity.ok(
-                agentFacade.createAgent(request.getUserId(), request.getName(), request.getDescription())
-        );
+    /**
+     * Create an agent specification from name and description.
+     * The MetaAgentService analyzes the description and identifies
+     * which MCP tools are needed.
+     */
+    @PostMapping("/create-agent")
+    public ResponseEntity<AgentSpec> createAgent(@Valid @RequestBody CreateAgentRequest request) {
+        log.info("Received create-agent request for: {}", request.getName());
+
+        AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
+
+        log.info("Generated agent spec: {} with tools: {}",
+                agentSpec.getAgentName(),
+                agentSpec.getAllowedTools());
+
+        return ResponseEntity.ok(agentSpec);
     }
 
-    @PostMapping("/{agentId}/refresh-config")
-    public ResponseEntity<AgentDto> refreshConfig(@PathVariable UUID agentId) {
-        return ResponseEntity.ok(agentFacade.refreshAgentConfig(agentId));
+    /**
+     * Run an agent with a given spec and query.
+     */
+    @PostMapping("/run-agent")
+    public ResponseEntity<AgentExecutionResponse> runAgent(@Valid @RequestBody AgentExecutionRequest request) {
+        log.info("Received run-agent request for: {}", request.getAgentSpec().getAgentName());
+        log.info("Query: {}", request.getQuery());
+
+        AgentExecutionResponse response = agentExecutorService.executeAgent(request);
+
+        log.info("Agent execution completed. Status: {}, Tools used: {}",
+                response.getStatus(),
+                response.getToolsUsed().size());
+
+        return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/{agentId}/config")
-    public ResponseEntity<AgentDto> updateConfig(
-            @PathVariable UUID agentId,
-            @RequestBody AgentConfigDto config) {
-        return ResponseEntity.ok(agentFacade.updateAgentConfig(agentId, config));
+    /**
+     * Combined endpoint: Create agent spec and run it in one call.
+     * Useful for quick testing and simple use cases.
+     *
+     * Request body:
+     * {
+     *   "name": "Agent Name",
+     *   "description": "What the agent should do",
+     *   "query": "Optional - specific query (defaults to description)",
+     *   "inputs": { "spaceId": "...", "text": "..." }
+     * }
+     */
+    @PostMapping("/create-and-run-agent")
+    public ResponseEntity<AgentExecutionResponse> createAndRunAgent(
+            @RequestBody CreateAndRunRequest request) {
+
+        log.info("Received create-and-run-agent request for: {}", request.getName());
+
+        // Step 1: Create agent spec
+        CreateAgentRequest createRequest = new CreateAgentRequest();
+        createRequest.setName(request.getName());
+        createRequest.setDescription(request.getDescription());
+        AgentSpec agentSpec = metaAgentService.buildAgentSpec(createRequest);
+
+        // Step 2: Execute agent (use description as query if query not provided)
+        AgentExecutionRequest execRequest = new AgentExecutionRequest();
+        execRequest.setAgentSpec(agentSpec);
+        String query = request.getQuery();
+        execRequest.setQuery(query != null && !query.isBlank() ? query : request.getDescription());
+        execRequest.setInputs(request.getInputs());
+
+        AgentExecutionResponse response = agentExecutorService.executeAgent(execRequest);
+
+        return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/{agentId}/mcp-servers")
-    public ResponseEntity<AgentDto> updateMcpServers(
-            @PathVariable UUID agentId,
-            @RequestBody List<String> mcpServerNames) {
-        return ResponseEntity.ok(agentFacade.updateAgentMcpServers(agentId, mcpServerNames));
+    /**
+     * Request DTO for create-and-run-agent endpoint
+     */
+    @lombok.Data
+    public static class CreateAndRunRequest {
+        private String name;
+        private String description;
+        private String query;  // Optional - defaults to description
+        private Map<String, Object> inputs;  // Optional - runtime inputs
     }
 
-    @GetMapping("/{userId}/{botId}")
-    public ResponseEntity<AgentDto> getAgent(
-            @PathVariable String userId,
-            @PathVariable String botId) {
-        return agentFacade.findAgent(userId, botId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/id/{agentId}")
-    public ResponseEntity<AgentDto> getAgentById(@PathVariable UUID agentId) {
-        return agentFacade.findAgentById(agentId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @DeleteMapping("/{agentId}")
-    public ResponseEntity<Void> deleteAgent(@PathVariable UUID agentId) {
-        agentFacade.deleteAgent(agentId);
-        return ResponseEntity.noContent().build();
+    /**
+     * Health check endpoint
+     */
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> health() {
+        return ResponseEntity.ok(Map.of(
+                "status", "UP",
+                "service", "agent-framework"
+        ));
     }
 }

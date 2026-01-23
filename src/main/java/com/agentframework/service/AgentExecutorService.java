@@ -78,9 +78,17 @@ public class AgentExecutorService {
     @Value("${mcp.github.pat-token:}")
     private String githubPatToken;
 
+    // Webex MCP Server (uses REST pattern, not JSON-RPC)
+    @Value("${mcp.webex.url:}")
+    private String webexMcpUrl;
+
+    @Value("${mcp.webex.token:}")
+    private String webexToken;
+
     private WebClient jiraMcpClient;
     private WebClient confluenceMcpClient;
     private WebClient githubMcpClient;
+    private WebClient webexMcpClient;
 
     @PostConstruct
     public void init() {
@@ -107,10 +115,18 @@ public class AgentExecutorService {
         } else {
             log.warn("GitHub MCP Server not configured. Set MCP_GITHUB_URL");
         }
+
+        // Initialize Webex MCP Client (REST pattern with X-Webex-Token)
+        if (webexMcpUrl != null && !webexMcpUrl.isBlank()) {
+            webexMcpClient = createWebexMcpClient(webexMcpUrl, webexToken);
+            log.info("Webex MCP Client initialized: {}", webexMcpUrl);
+        } else {
+            log.warn("Webex MCP Server not configured. Set MCP_WEBEX_URL");
+        }
     }
 
     /**
-     * Create a WebClient for MCP Server communication with redirect support
+     * Create a WebClient for MCP Server communication with redirect support (JSON-RPC pattern)
      */
     private WebClient createMcpClient(String baseUrl, String patToken) {
         // Configure HttpClient to follow redirects
@@ -130,6 +146,29 @@ public class AgentExecutorService {
         if (patToken != null && !patToken.isBlank()) {
             builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + patToken);
             builder.defaultHeader("X-JIRA-TOKEN", patToken); // Jira-specific header
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Create a WebClient for Webex MCP Server (REST pattern with X-Webex-Token)
+     */
+    private WebClient createWebexMcpClient(String baseUrl, String token) {
+        HttpClient httpClient = HttpClient.create()
+                .followRedirect(true)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+                .responseTimeout(Duration.ofSeconds(30));
+
+        WebClient.Builder builder = WebClient.builder()
+                .baseUrl(baseUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+
+        // Webex uses X-Webex-Token header
+        if (token != null && !token.isBlank()) {
+            builder.defaultHeader("X-Webex-Token", token);
         }
 
         return builder.build();
@@ -218,24 +257,18 @@ public class AgentExecutorService {
     }
 
     /**
-     * Call an MCP tool using JSON-RPC protocol
-     * 
-     * Request format:
-     * {
-     *   "jsonrpc": "2.0",
-     *   "id": 1,
-     *   "method": "tools/call",
-     *   "params": {
-     *     "name": "tool_name",
-     *     "arguments": {...}
-     *   }
-     * }
+     * Call an MCP tool - handles both JSON-RPC (Jira, Confluence, GitHub) and REST (Webex) patterns
      */
     private Object callMcpTool(MCPTool tool, Map<String, Object> arguments) throws Exception {
         String category = tool.getCategory();
         String mcpToolName = extractMcpToolName(tool.getName());
 
-        // Build JSON-RPC request
+        // Webex uses REST pattern, others use JSON-RPC
+        if ("webex".equals(category)) {
+            return callWebexMcpTool(mcpToolName, arguments);
+        }
+
+        // Build JSON-RPC request for Jira/Confluence/GitHub
         Map<String, Object> jsonRpcRequest = new LinkedHashMap<>();
         jsonRpcRequest.put("jsonrpc", "2.0");
         jsonRpcRequest.put("id", requestIdCounter.getAndIncrement());
@@ -310,6 +343,49 @@ public class AgentExecutorService {
     }
 
     /**
+     * Call Webex MCP tool using REST pattern
+     * Endpoint: /mcp/tools/{tool_name}
+     * Auth: X-Webex-Token header
+     */
+    private Object callWebexMcpTool(String toolName, Map<String, Object> arguments) throws Exception {
+        if (webexMcpClient == null) {
+            return Map.of(
+                    "error", "Webex MCP Server not configured",
+                    "message", "Please configure MCP_WEBEX_URL and WEBEX_TOKEN"
+            );
+        }
+
+        log.info("Calling Webex MCP tool: {} with REST request", toolName);
+        log.debug("Arguments: {}", arguments);
+
+        try {
+            // Webex MCP uses REST pattern: POST /mcp/tools/{tool_name}
+            String response = webexMcpClient.post()
+                    .uri("/mcp/tools/" + toolName)
+                    .bodyValue(arguments.isEmpty() ? Map.of() : arguments)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            log.debug("Webex MCP Response: {}", response);
+
+            if (response == null || response.isBlank()) {
+                return Map.of("status", "success", "message", "Operation completed");
+            }
+
+            return objectMapper.readTree(response);
+
+        } catch (WebClientResponseException e) {
+            log.error("Webex MCP Server error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return Map.of(
+                    "error", "Webex MCP Server error",
+                    "status", e.getStatusCode().value(),
+                    "message", e.getResponseBodyAsString()
+            );
+        }
+    }
+
+    /**
      * Get the appropriate MCP client based on tool category
      */
     private WebClient getMcpClient(String category) {
@@ -320,6 +396,8 @@ public class AgentExecutorService {
                 return confluenceMcpClient;
             case "github":
                 return githubMcpClient;
+            case "webex":
+                return webexMcpClient;
             default:
                 log.warn("Unknown MCP category: {}", category);
                 return null;
@@ -355,16 +433,25 @@ public class AgentExecutorService {
     /**
      * Extract the MCP tool name from the full registry name
      * e.g., "mcp_jira-sjc12_call_jira_rest_api" -> "call_jira_rest_api"
+     * e.g., "mcp_webex_list_spaces" -> "list_spaces"
      */
     private String extractMcpToolName(String fullToolName) {
         // Known MCP tool names
         String[] knownTools = {
+                // Jira
                 "call_jira_rest_api", "add_labels", "get_field_info",
+                // Confluence
                 "search_confluence_pages", "get_confluence_page_by_id",
                 "get_confluence_page_by_title", "get_confluence_page_by_url",
                 "call_confluence_rest_api",
+                // GitHub
                 "call_github_graphql_for_query", "get_pull_request_diff",
-                "call_github_restapi_for_search", "call_github_graphql_for_mutation"
+                "call_github_restapi_for_search", "call_github_graphql_for_mutation",
+                // Webex
+                "who_am_i", "get_person", "list_spaces", "get_space", 
+                "list_memberships", "list_messages", "get_message", "post_message",
+                "get_context_around_message", "index_space_messages", 
+                "retrieve_relevant", "ask_space"
         };
 
         for (String tool : knownTools) {
@@ -417,9 +504,35 @@ public class AgentExecutorService {
             case "github":
                 buildGitHubArguments(toolName, query, arguments);
                 break;
+            case "webex":
+                buildWebexArguments(toolName, query, arguments);
+                break;
         }
 
         return arguments;
+    }
+
+    /**
+     * Build Webex-specific arguments
+     */
+    private void buildWebexArguments(String toolName, String query, Map<String, Object> arguments) {
+        if (toolName.contains("post_message")) {
+            // Ensure markdown is set (Webex requires markdown, not text)
+            if (!arguments.containsKey("markdown") && arguments.containsKey("text")) {
+                arguments.put("markdown", arguments.get("text"));
+            }
+            if (!arguments.containsKey("markdown")) {
+                arguments.put("markdown", query); // Use query as message if not provided
+            }
+        } else if (toolName.contains("list_spaces")) {
+            arguments.putIfAbsent("max", 50);
+        } else if (toolName.contains("list_messages")) {
+            arguments.putIfAbsent("max", 20);
+        } else if (toolName.contains("ask_space") || toolName.contains("retrieve_relevant")) {
+            if (!arguments.containsKey("question")) {
+                arguments.put("question", query);
+            }
+        }
     }
 
     /**

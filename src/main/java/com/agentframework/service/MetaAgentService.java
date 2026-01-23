@@ -84,20 +84,24 @@ public class MetaAgentService {
 
     private List<String> extractKeywords(String text) {
         // Domain-specific keyword mappings for available MCP servers
-        // Available MCP Servers: Confluence, Jira, GitHub
+        // Available MCP Servers: Confluence, Jira, GitHub, Webex
         Map<String, List<String>> domainKeywords = new LinkedHashMap<>();
         
         // Jira keywords
         domainKeywords.put("jira", List.of("jira", "ticket", "issue", "bug", "task", "sprint", 
                 "backlog", "story", "epic", "kanban", "scrum", "assignee", "reporter"));
         
-        // Confluence keywords
+        // Confluence keywords (removed "space" to avoid conflict with Webex)
         domainKeywords.put("confluence", List.of("confluence", "wiki", "doc", "documentation", 
-                "page", "knowledge", "article", "space", "content"));
+                "page", "knowledge", "article", "content"));
         
         // GitHub keywords
         domainKeywords.put("github", List.of("github", "code", "repository", "repo", "commit", 
                 "pull request", "pr", "branch", "merge", "diff", "review"));
+
+        // Webex keywords (check for "webex" first for specificity)
+        domainKeywords.put("webex", List.of("webex", "webex space", "chat", "room", 
+                "conversation", "team", "meeting", "rag", "ask space", "index"));
 
         List<String> keywords = new ArrayList<>();
         
@@ -110,18 +114,28 @@ public class MetaAgentService {
             }
         }
 
-        // Also add action-related keywords
-        List<String> actionKeywords = List.of(
-                "analyze", "search", "find", "get", "create", "update", "delete",
-                "list", "add", "comment", "transition", "move", "read", "write"
-        );
+        // Add action-related keywords with HIGH priority for specific actions
+        Map<String, List<String>> actionMappings = new LinkedHashMap<>();
+        actionMappings.put("post", List.of("post", "send", "write message", "post message"));
+        actionMappings.put("list", List.of("list", "show", "get all", "fetch all"));
+        actionMappings.put("get", List.of("get", "fetch", "retrieve", "read"));
+        actionMappings.put("search", List.of("search", "find", "query", "look for"));
+        actionMappings.put("create", List.of("create", "new", "add"));
+        actionMappings.put("update", List.of("update", "modify", "change", "edit"));
+        actionMappings.put("delete", List.of("delete", "remove"));
+        actionMappings.put("ask", List.of("ask", "question", "inquire"));
+        actionMappings.put("index", List.of("index", "rag"));
         
-        for (String keyword : actionKeywords) {
-            if (text.contains(keyword)) {
-                keywords.add(keyword);
+        for (Map.Entry<String, List<String>> entry : actionMappings.entrySet()) {
+            for (String phrase : entry.getValue()) {
+                if (text.contains(phrase)) {
+                    keywords.add(entry.getKey());
+                    break;
+                }
             }
         }
 
+        log.info("Extracted keywords from '{}': {}", text, keywords);
         return keywords;
     }
 
@@ -129,60 +143,75 @@ public class MetaAgentService {
         Map<String, Integer> toolScores = new HashMap<>();
         
         // Domain keywords indicate which MCP server to prioritize
-        // Available MCP Servers: Confluence, Jira (sjc12), GitHub (aicodinggithub)
-        Set<String> domainKeywords = Set.of("jira", "confluence", "github");
+        Set<String> domainKeywords = Set.of("jira", "confluence", "github", "webex");
+        Set<String> actionKeywords = Set.of("post", "list", "get", "search", "create", "update", "delete", "ask", "index");
+        
         Set<String> activeDomains = keywords.stream()
                 .filter(domainKeywords::contains)
                 .collect(Collectors.toSet());
+        
+        Set<String> activeActions = keywords.stream()
+                .filter(actionKeywords::contains)
+                .collect(Collectors.toSet());
+
+        log.info("Active domains: {}, Active actions: {}", activeDomains, activeActions);
 
         for (MCPTool tool : availableTools) {
             int score = 0;
             String toolName = tool.getName().toLowerCase();
             String toolCategory = tool.getCategory().toLowerCase();
-            String toolText = (tool.getDescription() + " " +
-                    String.join(" ", tool.getCapabilities())).toLowerCase();
 
-            // High priority: Tool category matches domain keywords (MCP server)
-            if (activeDomains.contains("jira") && toolCategory.equals("jira")) {
-                score += 10;
-            }
-            if (activeDomains.contains("confluence") && toolCategory.equals("confluence")) {
-                score += 10;
-            }
-            if (activeDomains.contains("github") && toolCategory.equals("github")) {
-                score += 10;
+            // CRITICAL: Only consider tools from matching domains
+            boolean domainMatch = activeDomains.isEmpty() || activeDomains.contains(toolCategory);
+            if (!domainMatch) {
+                continue; // Skip tools from other domains entirely
             }
 
-            // Medium priority: Action keywords match tool capabilities
-            for (String keyword : keywords) {
-                if (!domainKeywords.contains(keyword)) { // Skip domain keywords for this check
-                    for (String capability : tool.getCapabilities()) {
-                        if (capability.toLowerCase().contains(keyword.toLowerCase())) {
-                            score += 3;
-                        }
-                    }
+            // Base score for domain match
+            if (activeDomains.contains(toolCategory)) {
+                score += 5;
+            }
+
+            // HIGH priority: Exact action match in tool name or capabilities
+            for (String action : activeActions) {
+                // Check if action is in tool name (e.g., "post_message" contains "post")
+                if (toolName.contains(action)) {
+                    score += 20; // High score for action in tool name
+                    log.debug("Tool {} matches action '{}' in name", tool.getName(), action);
                 }
-            }
-            
-            // Lower priority: General text matches in description
-            for (String keyword : keywords) {
-                if (!domainKeywords.contains(keyword) && toolText.contains(keyword.toLowerCase())) {
-                    score += 1;
+                // Check capabilities
+                for (String capability : tool.getCapabilities()) {
+                    if (capability.equalsIgnoreCase(action)) {
+                        score += 15; // High score for exact capability match
+                    }
                 }
             }
 
             if (score > 0) {
                 toolScores.put(tool.getName(), score);
+                log.debug("Tool {} scored {}", tool.getName(), score);
             }
         }
 
-        // Return tools sorted by score, taking top matches with minimum score threshold
-        return toolScores.entrySet().stream()
-                .filter(e -> e.getValue() >= 3) // Minimum relevance threshold
+        // Return only the best matching tool(s) - limit to 1 or 2 for focused execution
+        List<String> result = toolScores.entrySet().stream()
+                .filter(e -> e.getValue() >= 10) // Higher threshold for precision
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                .limit(5)
+                .limit(2) // Only top 2 tools for focused execution
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
+        
+        // Fallback: if no tools matched with high score, lower threshold
+        if (result.isEmpty()) {
+            result = toolScores.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(2)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+        }
+        
+        log.info("Selected tools: {}", result);
+        return result;
     }
 
     private String determineExecutionMode(String description) {
@@ -205,8 +234,8 @@ public class MetaAgentService {
     private List<String> determinePermissions(String description) {
         List<String> permissions = new ArrayList<>();
 
-        // Check for write indicators
-        List<String> writeIndicators = List.of("create", "update", "modify", "delete", "write", "add", "remove");
+        // Check for write indicators (including "post" and "send" for messaging)
+        List<String> writeIndicators = List.of("create", "update", "modify", "delete", "write", "add", "remove", "post", "send");
         boolean needsWrite = writeIndicators.stream().anyMatch(description::contains);
 
         if (needsWrite) {
