@@ -115,15 +115,23 @@ public class MetaAgentService {
         }
 
         // Add action-related keywords with HIGH priority for specific actions
+        // Order matters - more specific patterns first
         Map<String, List<String>> actionMappings = new LinkedHashMap<>();
+        
+        // "find space" or "find spaceId" should use list, not search/ask
+        if (text.contains("find space") || text.contains("find spaceid") || 
+            text.contains("get space") || text.contains("which space")) {
+            keywords.add("list");
+        }
+        
         actionMappings.put("post", List.of("post", "send", "write message", "post message"));
-        actionMappings.put("list", List.of("list", "show", "get all", "fetch all"));
-        actionMappings.put("get", List.of("get", "fetch", "retrieve", "read"));
-        actionMappings.put("search", List.of("search", "find", "query", "look for"));
+        actionMappings.put("list", List.of("list", "show", "get all", "fetch all", "show me"));
+        actionMappings.put("get", List.of("fetch", "retrieve", "read"));
+        actionMappings.put("search", List.of("search", "query", "look for"));
         actionMappings.put("create", List.of("create", "new", "add"));
         actionMappings.put("update", List.of("update", "modify", "change", "edit"));
         actionMappings.put("delete", List.of("delete", "remove"));
-        actionMappings.put("ask", List.of("ask", "question", "inquire"));
+        actionMappings.put("ask", List.of("ask question", "inquire about"));  // More specific - avoid false matches
         actionMappings.put("index", List.of("index", "rag"));
         
         for (Map.Entry<String, List<String>> entry : actionMappings.entrySet()) {
