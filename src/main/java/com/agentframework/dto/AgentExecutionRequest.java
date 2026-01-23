@@ -1,7 +1,5 @@
 package com.agentframework.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.Map;
@@ -9,10 +7,8 @@ import java.util.Map;
 @Data
 public class AgentExecutionRequest {
     
-    @NotNull(message = "Agent spec is required")
     private AgentSpec agentSpec;
     
-    @NotBlank(message = "User query is required")
     private String query;
     
     /**
@@ -21,4 +17,3 @@ public class AgentExecutionRequest {
      */
     private Map<String, Object> inputs;
 }
-

@@ -1,6 +1,6 @@
 package com.agentframework.data.facade;
 
-import com.agentframework.data.dto.AgentDto;
+import com.agentframework.common.dto.AgentDto;
 
 import java.util.List;
 import java.util.Optional;

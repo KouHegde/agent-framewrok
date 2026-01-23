@@ -1,6 +1,6 @@
 package com.agentframework.data.facade.impl;
 
-import com.agentframework.data.dto.AgentDto;
+import com.agentframework.common.dto.AgentDto;
 import com.agentframework.data.entity.Agent;
 import com.agentframework.data.entity.AgentMcpServer;
 import com.agentframework.data.facade.AgentDataFacade;

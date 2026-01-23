@@ -1,3 +1,4 @@
 rootProject.name = 'agent-framework'
 
+include 'agent-common'
 include 'agent-data'

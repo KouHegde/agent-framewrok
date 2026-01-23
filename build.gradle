@@ -18,14 +18,13 @@ repositories {
 }
 
 dependencies {
+    implementation project(':agent-common')
+    implementation project(':agent-data')
+    
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-    
-    // WebFlux for reactive HTTP client (MCP server calls)
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    runtimeOnly 'org.postgresql:postgresql'
     
-    // Lombok for cleaner code
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     
