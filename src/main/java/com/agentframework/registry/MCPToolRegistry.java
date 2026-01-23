@@ -134,6 +134,104 @@ public class MCPToolRegistry {
                 .capabilities(List.of("mutation", "graphql", "github", "write", "code", "repo", "create", "update"))
                 .requiredInputs(List.of("graphql"))
                 .build());
+
+        // ========================================
+        // WEBEX MCP Tools (REST API pattern)
+        // Endpoint: /mcp/tools/{tool_name}
+        // Auth: X-Webex-Token header
+        // ========================================
+        
+        // User & People
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_who_am_i")
+                .description("Get the current authenticated Webex user's information")
+                .category("webex")
+                .capabilities(List.of("webex", "user", "profile", "me", "identity"))
+                .requiredInputs(List.of())
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_get_person")
+                .description("Get details of a specific Webex person by ID")
+                .category("webex")
+                .capabilities(List.of("webex", "user", "person", "profile", "get"))
+                .requiredInputs(List.of("personId"))
+                .build());
+
+        // Spaces
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_list_spaces")
+                .description("List Webex spaces the user is a member of")
+                .category("webex")
+                .capabilities(List.of("webex", "space", "room", "list", "group", "chat"))
+                .requiredInputs(List.of())
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_get_space")
+                .description("Get details of a specific Webex space")
+                .category("webex")
+                .capabilities(List.of("webex", "space", "room", "get", "details"))
+                .requiredInputs(List.of("spaceId"))
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_list_memberships")
+                .description("List members of a specific Webex space")
+                .category("webex")
+                .capabilities(List.of("webex", "space", "members", "membership", "list"))
+                .requiredInputs(List.of("spaceId"))
+                .build());
+
+        // Messages
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_list_messages")
+                .description("List messages in a Webex space")
+                .category("webex")
+                .capabilities(List.of("webex", "message", "chat", "list", "conversation"))
+                .requiredInputs(List.of("spaceId"))
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_get_message")
+                .description("Get a specific Webex message by ID")
+                .category("webex")
+                .capabilities(List.of("webex", "message", "get", "read"))
+                .requiredInputs(List.of("messageId"))
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_post_message")
+                .description("Post a message to a Webex space")
+                .category("webex")
+                .capabilities(List.of("webex", "message", "post", "send", "write", "chat"))
+                .requiredInputs(List.of("spaceId", "text"))
+                .build());
+
+        // RAG & Search
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_index_space_messages")
+                .description("Index messages from a Webex space for RAG search")
+                .category("webex")
+                .capabilities(List.of("webex", "index", "rag", "search", "space", "messages"))
+                .requiredInputs(List.of("spaceId"))
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_retrieve_relevant")
+                .description("Retrieve relevant message snippets for a question using RAG")
+                .category("webex")
+                .capabilities(List.of("webex", "rag", "search", "retrieve", "relevant", "question"))
+                .requiredInputs(List.of("spaceId", "question"))
+                .build());
+
+        registerTool(MCPTool.builder()
+                .name("mcp_webex_ask_space")
+                .description("Ask a question about a Webex space and get an AI-synthesized answer with citations")
+                .category("webex")
+                .capabilities(List.of("webex", "ask", "question", "answer", "ai", "rag", "search"))
+                .requiredInputs(List.of("spaceId", "question"))
+                .build());
     }
 
     public void registerTool(MCPTool tool) {
