@@ -277,4 +277,18 @@ public class MCPToolRegistry {
                 })
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Clear all registered tools (used before dynamic discovery refresh)
+     */
+    public void clear() {
+        tools.clear();
+    }
+
+    /**
+     * Check if any tools are registered
+     */
+    public boolean isEmpty() {
+        return tools.isEmpty();
+    }
 }

@@ -20,6 +20,10 @@ llm:
 
 
 mcp:
+  # Enable dynamic tool discovery from MCP servers at startup
+  discovery:
+    enabled: ${MCP_DISCOVERY_ENABLED:false}  # Set to true to auto-discover tools
+
   jira:
     url: ${MCP_JIRA_URL:http://localhost:8081/mcp-webex-jira}
     pat-token: ${JIRA_PAT_TOKEN:}

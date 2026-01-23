@@ -30,6 +30,7 @@ public class AgentController {
 
     private final MetaAgentService metaAgentService;
     private final AgentExecutorService agentExecutorService;
+    private final com.agentframework.registry.MCPToolRegistry toolRegistry;
 
     /**
      * Create an agent specification from name and description.
@@ -121,6 +122,30 @@ public class AgentController {
         return ResponseEntity.ok(Map.of(
                 "status", "UP",
                 "service", "agent-framework"
+        ));
+    }
+
+    /**
+     * Get all available MCP tools
+     */
+    @GetMapping("/tools")
+    public ResponseEntity<Map<String, Object>> getTools() {
+        var tools = toolRegistry.getAllTools();
+        var byCategory = toolRegistry.getToolsByCategories();
+        
+        return ResponseEntity.ok(Map.of(
+                "total", tools.size(),
+                "byCategory", byCategory.entrySet().stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                Map.Entry::getKey,
+                                e -> e.getValue().stream()
+                                        .map(t -> Map.of(
+                                                "name", t.getName(),
+                                                "description", t.getDescription(),
+                                                "capabilities", t.getCapabilities()
+                                        ))
+                                        .collect(java.util.stream.Collectors.toList())
+                        ))
         ));
     }
 }
