@@ -3,8 +3,6 @@ package com.agentframework.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
-import java.util.Map;
-
 @Data
 public class RunAgentRequest {
     private String query;
@@ -12,8 +10,9 @@ public class RunAgentRequest {
     @JsonProperty("user_id")
     private String userId;
 
-    private Map<String, Object> context;
+    @JsonProperty("max_iterations")
+    private Integer maxIterations = 10;
 
-    @JsonProperty("session_id")
-    private String sessionId;
+    @JsonProperty("auto_approve")
+    private Boolean autoApprove = false;
 }

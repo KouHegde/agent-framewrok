@@ -15,8 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.concurrent.ConcurrentHashMap;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,12 +24,6 @@ public class DownstreamAgentService {
 
     @Value("${downstream.agent.url:http://localhost:8082}")
     private String downstreamAgentUrl;
-
-    /**
-     * In-memory session cache: agentId -> sessionId
-     * For single pod deployment. Consider Redis/DB for multi-pod.
-     */
-    private final ConcurrentHashMap<String, String> sessionCache = new ConcurrentHashMap<>();
 
     public DownstreamAgentCreateResponse createAgent(DownstreamAgentCreateRequest request) {
         WebClient client = WebClient.builder()
@@ -121,10 +113,9 @@ public class DownstreamAgentService {
 
     /**
      * Run an agent with the given request.
-     * Manages session caching automatically - uses cached sessionId if available,
-     * or caches the returned sessionId for subsequent calls.
+     * Calls POST /agents/{agentId}/run on the downstream service.
      *
-     * @param request the run request containing agentId, query, userId, context
+     * @param request the run request containing agentId, query, userId, maxIterations, autoApprove
      * @return the run response from downstream
      */
     public DownstreamAgentRunResponse runAgent(DownstreamAgentRunRequest request) {
@@ -134,21 +125,11 @@ public class DownstreamAgentService {
                 .build();
 
         try {
-            // Check if we have a cached session for this agent
-            String cachedSessionId = sessionCache.get(request.getAgentId());
-
-            // Use cached session if request doesn't provide one
-            if (request.getSessionId() == null && cachedSessionId != null) {
-                log.debug("Using cached sessionId for agent {}: {}", request.getAgentId(), cachedSessionId);
-                request.setSessionId(cachedSessionId);
-            }
-
-            log.info("Running downstream agent: {}, sessionId: {}",
-                    request.getAgentId(), request.getSessionId());
+            log.info("Running downstream agent: {}", request.getAgentId());
             log.debug("Downstream run payload: {}", objectMapper.writeValueAsString(request));
 
             String response = client.post()
-                    .uri("/agents/run")
+                    .uri("/agents/" + request.getAgentId() + "/run")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(String.class)
@@ -159,39 +140,11 @@ public class DownstreamAgentService {
             }
 
             DownstreamAgentRunResponse parsed = objectMapper.readValue(response, DownstreamAgentRunResponse.class);
-
-            // Cache the session ID if returned
-            if (parsed.getSessionId() != null && !parsed.getSessionId().isBlank()) {
-                sessionCache.put(request.getAgentId(), parsed.getSessionId());
-                log.debug("Cached sessionId for agent {}: {}", request.getAgentId(), parsed.getSessionId());
-            }
-
-            log.info("Downstream agent run completed. Status: {}, SessionId: {}",
-                    parsed.getStatus(), parsed.getSessionId());
+            log.info("Downstream agent run completed. Status: {}", parsed.getStatus());
             return parsed;
 
         } catch (Exception e) {
             throw new IllegalStateException("Downstream agent run failed: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * Get cached session ID for an agent.
-     *
-     * @param agentId the downstream agent ID
-     * @return the cached session ID, or null if not cached
-     */
-    public String getCachedSessionId(String agentId) {
-        return sessionCache.get(agentId);
-    }
-
-    /**
-     * Clear cached session for an agent.
-     *
-     * @param agentId the downstream agent ID
-     */
-    public void clearSession(String agentId) {
-        sessionCache.remove(agentId);
-        log.info("Cleared cached session for agent: {}", agentId);
     }
 }

@@ -9,7 +9,6 @@ import com.agentframework.service.DownstreamAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -69,10 +68,10 @@ public class AgentExecutionController {
             downstreamRequest.setAgentId(agent.downstreamAgentId());
             downstreamRequest.setQuery(request.getQuery());
             downstreamRequest.setUserId(request.getUserId());
-            downstreamRequest.setContext(request.getContext());
-            downstreamRequest.setSessionId(request.getSessionId());
+            downstreamRequest.setMaxIterations(request.getMaxIterations());
+            downstreamRequest.setAutoApprove(request.getAutoApprove());
 
-            // Call downstream service (handles session caching internally)
+            // Call downstream service
             DownstreamAgentRunResponse response = downstreamAgentService.runAgent(downstreamRequest);
 
             return ResponseEntity.ok(response);
@@ -83,25 +82,5 @@ public class AgentExecutionController {
                     new ErrorResponse("Failed to run agent", e.getMessage())
             );
         }
-    }
-
-    /**
-     * Clear the cached session for an agent.
-     * Useful for starting a fresh conversation.
-     */
-    @DeleteMapping("/{id}/session")
-    public ResponseEntity<?> clearSession(@PathVariable("id") UUID agentId) {
-        var agentOpt = agentFacade.findAgentById(agentId);
-        if (agentOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        var agent = agentOpt.get();
-        if (agent.downstreamAgentId() != null) {
-            downstreamAgentService.clearSession(agent.downstreamAgentId());
-        }
-
-        log.info("Cleared session for agent: {} ({})", agent.name(), agentId);
-        return ResponseEntity.ok().build();
     }
 }
