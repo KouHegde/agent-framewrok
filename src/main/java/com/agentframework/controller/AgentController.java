@@ -161,8 +161,8 @@ public class AgentController {
         AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
         log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
 
-        // Create normalized allowed_tools string for deduplication lookup
-        // Normalize: lowercase, trim, filter empty, distinct, sorted
+        // Create deduplication key: tools + mode + permissions
+        // Normalize tools: lowercase, trim, filter empty, distinct, sorted
         List<String> normalizedTools = agentSpec.getAllowedTools().stream()
                 .map(String::toLowerCase)
                 .map(String::trim)
@@ -170,12 +170,19 @@ public class AgentController {
                 .distinct()
                 .sorted()
                 .toList();
-        String allowedToolsKey = String.join(",", normalizedTools);
-        log.info("Normalized tools key for deduplication: {}", allowedToolsKey);
+        String toolsKey = String.join(",", normalizedTools);
+        
+        // Build compound dedup key: tools|mode|permissions
+        String executionMode = agentSpec.getExecutionMode() != null ? agentSpec.getExecutionMode() : "static";
+        String permissions = agentSpec.getPermissions() != null && !agentSpec.getPermissions().isEmpty() 
+                ? String.join(",", agentSpec.getPermissions()) 
+                : "read_only";
+        String allowedToolsKey = String.join("|", toolsKey, executionMode, permissions);
+        log.info("Deduplication key (tools|mode|permissions): {}", allowedToolsKey);
 
-        // Step 2: Check if agent with SAME TOOLS already exists
+        // Step 2: Check if agent with SAME capabilities already exists
         if (agentDataFacade != null && agentDataFacade.existsByAllowedTools(allowedToolsKey)) {
-            log.info("Agent with same tools already exists. Returning existing agent.");
+            log.info("Agent with same capabilities already exists. Returning existing agent.");
             var existingAgent = agentDataFacade.findByAllowedTools(allowedToolsKey);
             if (existingAgent.isPresent()) {
                 var agentDto = existingAgent.get();
@@ -185,8 +192,10 @@ public class AgentController {
                 response.put("name", agentDto.name());
                 response.put("description", agentDto.description() != null ? agentDto.description() : "");
                 response.put("status", "existing");
-                response.put("message", "Found existing agent with same capabilities");
+                response.put("message", "Found existing agent with same capabilities (tools + mode + permissions)");
                 response.put("allowedTools", normalizedTools);
+                response.put("executionMode", executionMode);
+                response.put("permissions", permissions);
                 response.put("mcpServers", agentDto.mcpServerNames());
                 response.put("createdAt", agentDto.createdAt().toString());
                 
@@ -250,6 +259,8 @@ public class AgentController {
             response.put("description", agentDto.description() != null ? agentDto.description() : "");
             response.put("status", "created");
             response.put("allowedTools", normalizedTools);
+            response.put("executionMode", executionMode);
+            response.put("permissions", permissions);
             response.put("mcpServers", agentDto.mcpServerNames());
             response.put("createdAt", agentDto.createdAt().toString());
             
