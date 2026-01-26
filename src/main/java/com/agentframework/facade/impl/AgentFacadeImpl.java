@@ -1,6 +1,5 @@
 package com.agentframework.facade.impl;
 
-import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
 import com.agentframework.data.facade.AgentDataFacade;
 import com.agentframework.dto.AgentSpec;
@@ -30,7 +29,7 @@ public class AgentFacadeImpl implements AgentFacade {
     public AgentCreationResult createAgent(String userId, String name, String description) {
         log.info("Creating agent: {} for user: {}", name, userId);
 
-        // 1. Build agent spec (selects MCP tools based on description)
+        // Build agent spec
         CreateAgentRequest request = new CreateAgentRequest();
         request.setName(name);
         request.setDescription(description);
@@ -38,7 +37,11 @@ public class AgentFacadeImpl implements AgentFacade {
         AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
         log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
 
-        // 2. Serialize agent spec to JSON
+        // Create sorted allowed_tools key
+        List<String> sortedTools = agentSpec.getAllowedTools().stream().sorted().toList();
+        String allowedToolsKey = String.join(",", sortedTools);
+
+        // Serialize agent spec
         String agentSpecJson;
         try {
             agentSpecJson = objectMapper.writeValueAsString(agentSpec);
@@ -46,13 +49,28 @@ public class AgentFacadeImpl implements AgentFacade {
             throw new RuntimeException("Failed to serialize agent spec", e);
         }
 
-        // 3. Persist agent
+        // Extract MCP server names
+        List<String> mcpServers = agentSpec.getAllowedTools().stream()
+                .map(tool -> {
+                    if (tool.startsWith("mcp_")) {
+                        String[] parts = tool.substring(4).split("_", 2);
+                        return parts[0];
+                    }
+                    return tool;
+                })
+                .distinct()
+                .toList();
+
+        // Get or create agent
         AgentDto agent = agentDataFacade.getOrCreateAgent(
                 name,
                 description,
+                agentSpec.getGoal(),
+                allowedToolsKey,
                 agentSpecJson,
                 userId,
-                agentSpec.getAllowedTools()
+                null,  // tenantId
+                mcpServers
         );
 
         log.info("Agent created: {}", agent.id());
@@ -63,7 +81,7 @@ public class AgentFacadeImpl implements AgentFacade {
     public AgentDto refreshAgentConfig(UUID agentId) {
         log.info("Refreshing config for agent: {}", agentId);
 
-        AgentDto agent = agentDataFacade.findAgentById(agentId)
+        AgentDto agent = agentDataFacade.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
 
         // Re-build spec from description
@@ -80,27 +98,47 @@ public class AgentFacadeImpl implements AgentFacade {
             throw new RuntimeException("Failed to serialize agent spec", e);
         }
 
-        return agentDataFacade.updateAgent(agentId, agent.description(), agentSpecJson, newSpec.getAllowedTools());
+        return agentDataFacade.updateAgent(
+                agentId, 
+                agent.description(), 
+                agentSpecJson,
+                newSpec.getExecutionMode(),
+                String.join(",", newSpec.getPermissions())
+        );
     }
 
     @Override
-    public AgentDto updateAgentConfig(UUID agentId, AgentConfigDto config) {
-        return agentDataFacade.updateAgentConfig(agentId, config);
+    public AgentDto updateAgentConfig(UUID agentId, com.agentframework.common.dto.AgentConfigDto config) {
+        // Update individual config fields
+        AgentDto agent = agentDataFacade.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        
+        return agentDataFacade.updateAgent(
+                agentId,
+                null,  // Keep description
+                null,  // Keep agentSpec
+                config.executionMode(),
+                config.permissions() != null ? String.join(",", config.permissions()) : null
+        );
     }
 
     @Override
     public AgentDto updateAgentMcpServers(UUID agentId, List<String> mcpServerNames) {
-        return agentDataFacade.updateAgent(agentId, null, null, mcpServerNames);
+        // This would require adding a new method to the facade
+        throw new UnsupportedOperationException("Not implemented yet");
     }
 
     @Override
     public Optional<AgentDto> findAgent(String userId, String name) {
-        return agentDataFacade.findAgentByName(name);
+        // Find by allowed tools or other criteria
+        return agentDataFacade.findByCreatedBy(userId).stream()
+                .filter(a -> a.name().equals(name))
+                .findFirst();
     }
 
     @Override
     public Optional<AgentDto> findAgentById(UUID agentId) {
-        return agentDataFacade.findAgentById(agentId);
+        return agentDataFacade.findById(agentId);
     }
 
     @Override
