@@ -6,16 +6,14 @@ import com.agentframework.data.facade.AgentDataFacade;
 import com.agentframework.dto.AgentSpec;
 import com.agentframework.dto.CreateAgentRequest;
 import com.agentframework.facade.AgentFacade;
-import com.agentframework.service.ConfigDeciderService;
-import com.agentframework.service.MCPDataFetcherService;
 import com.agentframework.service.MetaAgentService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,44 +23,40 @@ import java.util.UUID;
 public class AgentFacadeImpl implements AgentFacade {
 
     private final MetaAgentService metaAgentService;
-    private final ConfigDeciderService configDeciderService;
-    private final MCPDataFetcherService mcpDataFetcherService;
     private final AgentDataFacade agentDataFacade;
+    private final ObjectMapper objectMapper;
 
     @Override
     public AgentCreationResult createAgent(String userId, String name, String description) {
         log.info("Creating agent: {} for user: {}", name, userId);
 
-        // 1. Build agent spec (selects MCP servers based on description)
+        // 1. Build agent spec (selects MCP tools based on description)
         CreateAgentRequest request = new CreateAgentRequest();
-        request.setUserId(userId);
         request.setName(name);
         request.setDescription(description);
 
         AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
         log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
 
-        // 2. Fetch sample data from MCP servers
-        Map<String, Object> mcpData = fetchMcpData(agentSpec);
-        log.info("Fetched data from {} MCP sources", mcpData.size());
+        // 2. Serialize agent spec to JSON
+        String agentSpecJson;
+        try {
+            agentSpecJson = objectMapper.writeValueAsString(agentSpec);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize agent spec", e);
+        }
 
-        // 3. Decide optimal configuration
-        AgentConfigDto config = configDeciderService.decideConfig(agentSpec, mcpData, description);
-        log.info("Decided config: reasoningStyle={}, temperature={}, retrieverK={}",
-                config.reasoningStyle(), config.temperature(), config.retrieverK());
-
-        // 4. Persist agent with all config
+        // 3. Persist agent
         AgentDto agent = agentDataFacade.getOrCreateAgent(
-                userId,
                 name,
                 description,
-                agentSpec.getGoal(),
-                agentSpec.getAllowedTools(),
-                config
+                agentSpecJson,
+                userId,
+                agentSpec.getAllowedTools()
         );
 
         log.info("Agent created: {}", agent.id());
-        return new AgentCreationResult(agent, agentSpec, config);
+        return new AgentCreationResult(agent, agentSpec, null);
     }
 
     @Override
@@ -72,20 +66,21 @@ public class AgentFacadeImpl implements AgentFacade {
         AgentDto agent = agentDataFacade.findAgentById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
 
-        // Build spec from existing agent
-        AgentSpec spec = AgentSpec.builder()
-                .agentName(agent.botId())
-                .goal(agent.goal())
-                .allowedTools(agent.mcpServerNames())
-                .executionMode(agent.executionMode())
-                .permissions(agent.permissions())
-                .build();
+        // Re-build spec from description
+        CreateAgentRequest request = new CreateAgentRequest();
+        request.setName(agent.name());
+        request.setDescription(agent.description());
 
-        // Fetch fresh data and re-decide config
-        Map<String, Object> mcpData = fetchMcpData(spec);
-        AgentConfigDto newConfig = configDeciderService.decideConfig(spec, mcpData, agent.description());
+        AgentSpec newSpec = metaAgentService.buildAgentSpec(request);
 
-        return agentDataFacade.updateAgentConfig(agentId, newConfig);
+        String agentSpecJson;
+        try {
+            agentSpecJson = objectMapper.writeValueAsString(newSpec);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize agent spec", e);
+        }
+
+        return agentDataFacade.updateAgent(agentId, agent.description(), agentSpecJson, newSpec.getAllowedTools());
     }
 
     @Override
@@ -95,12 +90,12 @@ public class AgentFacadeImpl implements AgentFacade {
 
     @Override
     public AgentDto updateAgentMcpServers(UUID agentId, List<String> mcpServerNames) {
-        return agentDataFacade.updateAgentMcpServers(agentId, mcpServerNames);
+        return agentDataFacade.updateAgent(agentId, null, null, mcpServerNames);
     }
 
     @Override
-    public Optional<AgentDto> findAgent(String userId, String botId) {
-        return agentDataFacade.findAgent(userId, botId);
+    public Optional<AgentDto> findAgent(String userId, String name) {
+        return agentDataFacade.findAgentByName(name);
     }
 
     @Override
@@ -111,33 +106,5 @@ public class AgentFacadeImpl implements AgentFacade {
     @Override
     public void deleteAgent(UUID agentId) {
         agentDataFacade.deleteAgent(agentId);
-    }
-
-    private Map<String, Object> fetchMcpData(AgentSpec agentSpec) {
-        Map<String, Object> mcpData = new HashMap<>();
-
-        for (String toolName : agentSpec.getAllowedTools()) {
-            try {
-                String category = extractCategory(toolName);
-                if (category != null && !mcpData.containsKey(category)) {
-                    Object data = mcpDataFetcherService.fetchSampleData(category, toolName);
-                    if (data != null) {
-                        mcpData.put(category, data);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to fetch data for tool {}: {}", toolName, e.getMessage());
-            }
-        }
-
-        return mcpData;
-    }
-
-    private String extractCategory(String toolName) {
-        String lower = toolName.toLowerCase();
-        if (lower.contains("jira")) return "jira";
-        if (lower.contains("confluence")) return "confluence";
-        if (lower.contains("github")) return "github";
-        return null;
     }
 }

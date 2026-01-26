@@ -39,15 +39,12 @@ public class Agent {
     @Column(name = "user_id")
     private String userId;
 
-    // Agent description/goal
-    @Column(name = "description")
-    private String description;
-
+    // Agent goal
     @Column(name = "goal")
     private String goal;
 
     // RAG Configuration
-    @Column(name = "rag_scope", columnDefinition = "TEXT[]")
+    @Column(name = "rag_scope", columnDefinition = "TEXT")
     @Convert(converter = StringArrayConverter.class)
     private List<String> ragScope = new ArrayList<>();
 
@@ -69,7 +66,7 @@ public class Agent {
     @Column(name = "execution_mode")
     private String executionMode = "static";
 
-    @Column(name = "permissions", columnDefinition = "TEXT[]")
+    @Column(name = "permissions", columnDefinition = "TEXT")
     @Convert(converter = StringArrayConverter.class)
     private List<String> permissions = new ArrayList<>(List.of("read_only"));
 
@@ -149,14 +146,6 @@ public class Agent {
 
     public void setUserId(String userId) {
         this.userId = userId;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
     }
 
     public String getGoal() {
