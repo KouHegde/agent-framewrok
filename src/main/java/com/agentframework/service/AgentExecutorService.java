@@ -54,6 +54,7 @@ public class AgentExecutorService {
 
     private final MCPToolRegistry toolRegistry;
     private final ObjectMapper objectMapper;
+    private final LLMService llmService;
 
     // Request ID counter for JSON-RPC
     private final AtomicLong requestIdCounter = new AtomicLong(1);
@@ -479,21 +480,39 @@ public class AgentExecutorService {
 
     /**
      * Build arguments for MCP tool call
+     * 
+     * Priority:
+     * 1. User-provided explicit inputs (highest priority)
+     * 2. LLM-powered argument building (if LLM enabled)
+     * 3. Keyword-based pattern matching (fallback)
      */
     private Map<String, Object> buildToolArguments(MCPTool tool, AgentExecutionRequest request) {
         Map<String, Object> arguments = new HashMap<>();
         Map<String, Object> userInputs = request.getInputs();
         String query = request.getQuery();
 
-        // Copy user-provided inputs
-        if (userInputs != null) {
+        // Priority 1: User-provided explicit inputs (skip all detection)
+        if (userInputs != null && !userInputs.isEmpty()) {
+            log.info("Using user-provided explicit inputs");
             arguments.putAll(userInputs);
+            return arguments;
         }
 
         String toolName = tool.getName();
         String category = tool.getCategory();
 
-        // Build category-specific arguments
+        // Priority 2: Try LLM-powered argument building
+        if (llmService != null && llmService.isEnabled()) {
+            log.info("Using LLM to build tool arguments for: {}", toolName);
+            Map<String, Object> llmArgs = llmService.buildToolArguments(toolName, query, tool.getDescription());
+            if (llmArgs != null && !llmArgs.isEmpty()) {
+                log.info("LLM generated arguments: {}", llmArgs);
+                return llmArgs;
+            }
+            log.warn("LLM argument building failed, falling back to keyword-based");
+        }
+
+        // Priority 3: Keyword-based pattern matching (fallback)
         switch (category) {
             case "jira":
                 buildJiraArguments(toolName, query, arguments);
@@ -541,10 +560,55 @@ public class AgentExecutorService {
     private void buildJiraArguments(String toolName, String query, Map<String, Object> arguments) {
         // Auto-detect issue key from query
         String issueKey = extractIssueKey(query);
+        String lowerQuery = query.toLowerCase();
 
         if (toolName.contains("call_jira_rest_api")) {
-            if (issueKey != null && !arguments.containsKey("endpoint")) {
-                // Single issue fetch
+            // Detect operation type from query
+            if (lowerQuery.contains("add comment") || lowerQuery.contains("comment")) {
+                // Add comment to issue
+                if (issueKey != null) {
+                    arguments.put("endpoint", "issue/" + issueKey + "/comment");
+                    arguments.put("method", "POST");
+                    
+                    // Extract comment text from query
+                    String commentText = extractCommentText(query);
+                    arguments.put("data", Map.of("body", commentText));
+                    log.info("Adding comment to {}: {}", issueKey, commentText);
+                }
+            } else if (lowerQuery.contains("update description") || lowerQuery.contains("change description")) {
+                // Update issue description
+                if (issueKey != null) {
+                    arguments.put("endpoint", "issue/" + issueKey);
+                    arguments.put("method", "PUT");
+                    
+                    String newDescription = extractDescriptionText(query);
+                    arguments.put("data", Map.of("fields", Map.of("description", newDescription)));
+                    log.info("Updating description for {}", issueKey);
+                }
+            } else if (lowerQuery.contains("change status") || lowerQuery.contains("transition") || 
+                       lowerQuery.contains("move to") || lowerQuery.contains("set status")) {
+                // Change issue status (transition)
+                if (issueKey != null) {
+                    // First, get available transitions
+                    arguments.put("endpoint", "issue/" + issueKey + "/transitions");
+                    arguments.put("method", "GET");
+                    log.info("Getting transitions for {} (status change requested)", issueKey);
+                    // Note: Actual transition requires a follow-up POST call with transition ID
+                }
+            } else if (lowerQuery.contains("assign") || lowerQuery.contains("assignee")) {
+                // Assign issue
+                if (issueKey != null) {
+                    arguments.put("endpoint", "issue/" + issueKey);
+                    arguments.put("method", "PUT");
+                    
+                    String assignee = extractAssignee(query);
+                    if (assignee != null) {
+                        arguments.put("data", Map.of("fields", Map.of("assignee", Map.of("name", assignee))));
+                        log.info("Assigning {} to {}", issueKey, assignee);
+                    }
+                }
+            } else if (issueKey != null && !arguments.containsKey("endpoint")) {
+                // Default: Single issue fetch
                 arguments.put("endpoint", "issue/" + issueKey);
                 arguments.put("method", "GET");
             } else if (!arguments.containsKey("endpoint")) {
@@ -566,6 +630,55 @@ public class AgentExecutorService {
                 arguments.put("search_term", query);
             }
         }
+    }
+    
+    /**
+     * Extract comment text from query
+     */
+    private String extractCommentText(String query) {
+        // Try to extract text after "saying:" or "with text:" or after issue key
+        String[] markers = {"saying:", "with comment:", "with text:", "comment:"};
+        for (String marker : markers) {
+            int idx = query.toLowerCase().indexOf(marker);
+            if (idx >= 0) {
+                return query.substring(idx + marker.length()).trim();
+            }
+        }
+        // Fallback: use the whole query as comment
+        return "Comment added via Agent Framework: " + query;
+    }
+    
+    /**
+     * Extract description text from query
+     */
+    private String extractDescriptionText(String query) {
+        String[] markers = {"to:", "with:", "description:"};
+        for (String marker : markers) {
+            int idx = query.toLowerCase().indexOf(marker);
+            if (idx >= 0) {
+                return query.substring(idx + marker.length()).trim();
+            }
+        }
+        return "Updated via Agent Framework";
+    }
+    
+    /**
+     * Extract assignee from query
+     */
+    private String extractAssignee(String query) {
+        String[] markers = {"to ", "assignee "};
+        for (String marker : markers) {
+            int idx = query.toLowerCase().indexOf(marker);
+            if (idx >= 0) {
+                String rest = query.substring(idx + marker.length()).trim();
+                // Take the first word as username
+                String[] parts = rest.split("\\s+");
+                if (parts.length > 0) {
+                    return parts[0];
+                }
+            }
+        }
+        return null;
     }
 
     /**

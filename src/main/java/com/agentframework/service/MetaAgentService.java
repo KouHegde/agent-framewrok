@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  * Meta-Agent Service that analyzes agent descriptions and generates
  * comprehensive agent specifications using available MCP tools.
  * 
- * Currently uses keyword-based analysis. LLM integration can be enabled later.
+ * Uses LLM when enabled, falls back to keyword-based analysis otherwise.
  */
 @Slf4j
 @Service
@@ -26,13 +26,11 @@ public class MetaAgentService {
 
     private final MCPToolRegistry toolRegistry;
     private final ObjectMapper objectMapper;
-
-    @Value("${llm.enabled:false}")
-    private boolean llmEnabled;
+    private final LLMService llmService;
 
     /**
      * Builds an agent specification from a simple name and description.
-     * Uses intelligent keyword-based analysis to match tools.
+     * Uses LLM if enabled, otherwise falls back to keyword-based analysis.
      */
     public AgentSpec buildAgentSpec(CreateAgentRequest request) {
         log.info("Building agent spec for: {}", request.getName());
@@ -40,8 +38,51 @@ public class MetaAgentService {
         // Get all available tools for context
         List<MCPTool> availableTools = toolRegistry.getAllTools();
 
-        // Use keyword-based analysis
+        // Try LLM-based analysis first if enabled
+        if (llmService.isEnabled()) {
+            log.info("Using LLM for agent spec generation");
+            AgentSpec llmSpec = buildAgentSpecWithLLM(request, availableTools);
+            if (llmSpec != null) {
+                return llmSpec;
+            }
+            log.warn("LLM analysis failed, falling back to keyword-based analysis");
+        }
+
+        // Fallback to keyword-based analysis
         return buildAgentSpecWithKeywordAnalysis(request, availableTools);
+    }
+
+    /**
+     * Build agent spec using LLM
+     */
+    private AgentSpec buildAgentSpecWithLLM(CreateAgentRequest request, List<MCPTool> availableTools) {
+        try {
+            LLMService.LLMAnalysisResult result = llmService.analyzeAgentDescription(
+                    request.getName(),
+                    request.getDescription(),
+                    availableTools
+            );
+
+            if (result == null || result.getSelectedTools() == null || result.getSelectedTools().isEmpty()) {
+                return null;
+            }
+
+            log.info("LLM selected tools: {} with reasoning: {}", 
+                    result.getSelectedTools(), result.getReasoning());
+
+            return AgentSpec.builder()
+                    .agentName(request.getName())
+                    .goal(result.getGoal() != null ? result.getGoal() : request.getDescription())
+                    .allowedTools(result.getSelectedTools())
+                    .executionMode(result.getExecutionMode())
+                    .permissions(result.getPermissions())
+                    .expectedInputs(result.getExpectedInputs())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error in LLM-based spec generation: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -129,10 +170,12 @@ public class MetaAgentService {
         actionMappings.put("get", List.of("fetch", "retrieve", "read"));
         actionMappings.put("search", List.of("search", "query", "look for"));
         actionMappings.put("create", List.of("create", "new", "add"));
-        actionMappings.put("update", List.of("update", "modify", "change", "edit"));
+        actionMappings.put("update", List.of("update", "modify", "change", "edit", "assign", "transition", "move to"));
         actionMappings.put("delete", List.of("delete", "remove"));
+        actionMappings.put("comment", List.of("comment", "add comment", "post comment"));
         actionMappings.put("ask", List.of("ask question", "inquire about"));  // More specific - avoid false matches
         actionMappings.put("index", List.of("index", "rag"));
+        actionMappings.put("api", List.of("issue details", "issue", "rest api", "api call"));  // For REST API calls
         
         for (Map.Entry<String, List<String>> entry : actionMappings.entrySet()) {
             for (String phrase : entry.getValue()) {
@@ -152,7 +195,7 @@ public class MetaAgentService {
         
         // Domain keywords indicate which MCP server to prioritize
         Set<String> domainKeywords = Set.of("jira", "confluence", "github", "webex");
-        Set<String> actionKeywords = Set.of("post", "list", "get", "search", "create", "update", "delete", "ask", "index");
+        Set<String> actionKeywords = Set.of("post", "list", "get", "search", "create", "update", "delete", "ask", "index", "api", "comment");
         
         Set<String> activeDomains = keywords.stream()
                 .filter(domainKeywords::contains)
@@ -192,6 +235,15 @@ public class MetaAgentService {
                     if (capability.equalsIgnoreCase(action)) {
                         score += 15; // High score for exact capability match
                     }
+                }
+            }
+            
+            // SPECIAL: Prefer REST API tools for issue/page/repo operations
+            if (toolName.contains("rest_api") || toolName.contains("call_") || toolName.contains("_api")) {
+                if (activeActions.contains("api") || activeActions.contains("get") || 
+                    activeActions.contains("create") || activeActions.contains("update")) {
+                    score += 25; // Boost REST API tools for CRUD operations
+                    log.debug("Tool {} gets REST API boost for CRUD operation", tool.getName());
                 }
             }
 
@@ -243,7 +295,8 @@ public class MetaAgentService {
         List<String> permissions = new ArrayList<>();
 
         // Check for write indicators (including "post" and "send" for messaging)
-        List<String> writeIndicators = List.of("create", "update", "modify", "delete", "write", "add", "remove", "post", "send");
+        List<String> writeIndicators = List.of("create", "update", "modify", "delete", "write", "add", "remove", 
+                "post", "send", "comment", "assign", "transition", "change status", "move to");
         boolean needsWrite = writeIndicators.stream().anyMatch(description::contains);
 
         if (needsWrite) {
