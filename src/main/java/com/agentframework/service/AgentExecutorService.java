@@ -130,15 +130,17 @@ public class AgentExecutorService {
      * Create a WebClient for MCP Server communication with redirect support (JSON-RPC pattern)
      */
     private WebClient createMcpClient(String baseUrl, String patToken) {
-        // Configure HttpClient to follow redirects
+        // Configure HttpClient to follow redirects with increased buffer for large responses
         HttpClient httpClient = HttpClient.create()
                 .followRedirect(true)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-                .responseTimeout(Duration.ofSeconds(30));
+                .responseTimeout(Duration.ofSeconds(60));  // Increased timeout for large responses
 
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(baseUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                // Increase buffer size for large responses (10MB max)
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 // MCP servers require both application/json and text/event-stream in Accept header
                 .defaultHeader(HttpHeaders.ACCEPT, "application/json, text/event-stream");
@@ -159,11 +161,13 @@ public class AgentExecutorService {
         HttpClient httpClient = HttpClient.create()
                 .followRedirect(true)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-                .responseTimeout(Duration.ofSeconds(30));
+                .responseTimeout(Duration.ofSeconds(60));  // Increased timeout
 
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(baseUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                // Increase buffer size for large responses (10MB max)
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
 
@@ -335,11 +339,23 @@ public class AgentExecutorService {
             return responseNode;
 
         } catch (WebClientResponseException e) {
-            log.error("MCP Server error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("MCP Server HTTP error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             return Map.of(
-                    "error", "MCP Server error",
+                    "error", "MCP Server HTTP error: " + e.getStatusCode(),
                     "status", e.getStatusCode().value(),
                     "message", e.getResponseBodyAsString()
+            );
+        } catch (org.springframework.core.io.buffer.DataBufferLimitException e) {
+            log.error("Response too large, buffer overflow: {}", e.getMessage());
+            return Map.of(
+                    "error", "Response too large",
+                    "message", "The API returned too much data. Try filtering with maxResults or fields parameter."
+            );
+        } catch (Exception e) {
+            log.error("MCP call failed: {} - {}", e.getClass().getSimpleName(), e.getMessage(), e);
+            return Map.of(
+                    "error", "MCP call failed: " + e.getClass().getSimpleName(),
+                    "message", e.getMessage() != null ? e.getMessage() : "Unknown error"
             );
         }
     }
@@ -503,15 +519,21 @@ public class AgentExecutorService {
         String toolName = tool.getName();
         String category = tool.getCategory();
 
-        // Priority 2: Try LLM-powered argument building
+        // Priority 2: Try LLM-powered argument building (translates natural language to API calls)
         if (llmService != null && llmService.isEnabled()) {
-            log.info("Using LLM to build tool arguments for: {}", toolName);
-            Map<String, Object> llmArgs = llmService.buildToolArguments(toolName, query, tool.getDescription());
-            if (llmArgs != null && !llmArgs.isEmpty()) {
-                log.info("LLM generated arguments: {}", llmArgs);
-                return llmArgs;
+            log.info("Attempting LLM-powered argument building for tool: {} with query: '{}'", toolName, query);
+            try {
+                Map<String, Object> llmArgs = llmService.buildToolArguments(toolName, query, tool.getDescription());
+                if (llmArgs != null && !llmArgs.isEmpty()) {
+                    log.info("✅ LLM successfully generated arguments: {}", llmArgs);
+                    return llmArgs;
+                }
+                log.warn("LLM returned empty arguments, falling back to keyword-based analysis");
+            } catch (Exception e) {
+                log.error("LLM argument building threw exception: {}", e.getMessage());
             }
-            log.warn("LLM argument building failed, falling back to keyword-based");
+        } else {
+            log.debug("LLM is disabled or not available, using keyword-based analysis");
         }
 
         // Priority 3: Keyword-based pattern matching (fallback)
@@ -538,13 +560,42 @@ public class AgentExecutorService {
      */
     private void buildWebexArguments(String toolName, String query, Map<String, Object> arguments) {
         if (toolName.contains("post_message")) {
-            // Ensure markdown is set (Webex requires markdown, not text)
-            if (!arguments.containsKey("markdown") && arguments.containsKey("text")) {
-                arguments.put("markdown", arguments.get("text"));
+            String lowerQuery = query.toLowerCase();
+            
+            // Extract message content and space name from query
+            // Pattern: "Post <message> in <space name>"
+            String message = query;
+            String spaceName = null;
+            
+            // Try to extract space name
+            String[] spaceMarkers = {" in ", " to ", " on "};
+            for (String marker : spaceMarkers) {
+                int idx = lowerQuery.lastIndexOf(marker);
+                if (idx > 0) {
+                    // Message is before the marker
+                    String beforeMarker = query.substring(0, idx);
+                    // Remove "post" or "send" prefix
+                    message = beforeMarker.replaceFirst("(?i)^(post|send|write)\\s+", "").trim();
+                    // Space name is after the marker, remove "space" suffix
+                    spaceName = query.substring(idx + marker.length()).trim()
+                            .replaceFirst("(?i)\\s+space$", "").trim();
+                    break;
+                }
             }
+            
+            // Set markdown (message content)
             if (!arguments.containsKey("markdown")) {
-                arguments.put("markdown", query); // Use query as message if not provided
+                arguments.put("markdown", message.isEmpty() ? query : message);
             }
+            
+            // Set spaceId - if we have a space name, use placeholder format
+            if (!arguments.containsKey("spaceId") && spaceName != null && !spaceName.isEmpty()) {
+                // Use special format that can be resolved later or by user
+                arguments.put("spaceId", "SPACE_NAME:" + spaceName);
+                log.warn("Webex post_message: Space ID not provided. Using space name '{}'. " +
+                         "For production, provide explicit spaceId in inputs.", spaceName);
+            }
+            
         } else if (toolName.contains("list_spaces")) {
             arguments.putIfAbsent("max", 50);
         } else if (toolName.contains("list_messages")) {
