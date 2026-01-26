@@ -79,4 +79,9 @@ public interface AgentDataFacade {
      * Deletes an agent by its ID.
      */
     void deleteAgent(UUID agentId);
+
+    /**
+     * Updates agent configuration (RAG, reasoning, etc.)
+     */
+    AgentDto updateAgentConfig(UUID agentId, AgentConfigDto config);
 }

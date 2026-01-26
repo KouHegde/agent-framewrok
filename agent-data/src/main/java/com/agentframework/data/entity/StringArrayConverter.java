@@ -3,45 +3,33 @@ package com.agentframework.data.entity;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 
-import java.sql.Array;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * JPA Converter for PostgreSQL TEXT[] arrays to Java List<String>.
+ * JPA Converter for TEXT column to Java List<String>.
+ * Stores as comma-separated string.
  */
 @Converter
-public class StringArrayConverter implements AttributeConverter<List<String>, Object> {
+public class StringArrayConverter implements AttributeConverter<List<String>, String> {
+
+    private static final String DELIMITER = ",";
 
     @Override
-    public Object convertToDatabaseColumn(List<String> attribute) {
+    public String convertToDatabaseColumn(List<String> attribute) {
         if (attribute == null || attribute.isEmpty()) {
-            return new String[]{};
+            return null;
         }
-        return attribute.toArray(new String[0]);
+        return String.join(DELIMITER, attribute);
     }
 
     @Override
-    public List<String> convertToEntityAttribute(Object dbData) {
-        if (dbData == null) {
+    public List<String> convertToEntityAttribute(String dbData) {
+        if (dbData == null || dbData.isBlank()) {
             return new ArrayList<>();
         }
-        
-        if (dbData instanceof Array) {
-            try {
-                String[] array = (String[]) ((Array) dbData).getArray();
-                return new ArrayList<>(Arrays.asList(array));
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to convert SQL Array to List", e);
-            }
-        }
-        
-        if (dbData instanceof String[]) {
-            return new ArrayList<>(Arrays.asList((String[]) dbData));
-        }
-        
-        return new ArrayList<>();
+        return new ArrayList<>(Arrays.asList(dbData.split(DELIMITER)));
     }
 }

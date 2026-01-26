@@ -16,8 +16,7 @@ public record AgentDto(
         String agentSpec,  // JSON string of AgentSpec
         String userId,
         
-        // Agent description/goal
-        String description,
+        // Agent goal
         String goal,
         
         // MCP Servers

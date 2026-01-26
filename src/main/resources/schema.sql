@@ -6,7 +6,24 @@ CREATE TABLE IF NOT EXISTS agents (
     description TEXT,
     agent_spec TEXT,  -- JSON string of AgentSpec
     user_id TEXT,
-    user_config TEXT,
+    goal TEXT,
+    
+    -- RAG Configuration
+    rag_scope TEXT,
+    
+    -- Reasoning Configuration
+    reasoning_style TEXT DEFAULT 'direct',
+    temperature NUMERIC(3,2) DEFAULT 0.30,
+    
+    -- Retriever Configuration
+    retriever_type TEXT DEFAULT 'simple',
+    retriever_k INTEGER DEFAULT 5,
+    
+    -- Execution Configuration
+    execution_mode TEXT DEFAULT 'static',
+    permissions TEXT DEFAULT 'read_only',
+    
+    -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -21,6 +38,5 @@ CREATE TABLE IF NOT EXISTS agent_mcp_servers (
 
 CREATE INDEX IF NOT EXISTS idx_agents_name ON agents(name);
 CREATE INDEX IF NOT EXISTS idx_agents_user_id ON agents(user_id);
-CREATE INDEX IF NOT EXISTS idx_agents_reasoning_style ON agents(reasoning_style);
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_agent_id ON agent_mcp_servers(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_server_name ON agent_mcp_servers(server_name);

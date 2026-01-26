@@ -47,11 +47,6 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         agent.setAgentSpec(agentSpec);
         addMcpServers(agent, mcpServerNames);
 
-        // Apply config if provided
-        if (config != null) {
-            applyConfig(agent, config);
-        }
-
         Agent saved = agentRepository.save(agent);
         log.info("Created agent {} with name: {}", saved.getId(), name);
         return toDto(saved);
@@ -106,7 +101,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
     @Override
     @Transactional
     public AgentDto updateAgentConfig(UUID agentId, AgentConfigDto config) {
-        Agent agent = findAgentOrThrow(agentId);
+        Agent agent = agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
         applyConfig(agent, config);
         Agent updated = agentRepository.save(agent);
         log.info("Updated config for agent: {}", agentId);
@@ -177,7 +173,6 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                 agent.getDescription(),
                 agent.getAgentSpec(),
                 agent.getUserId(),
-                agent.getDescription(),
                 agent.getGoal(),
                 mcpServerNames,
                 agent.getRagScope(),
