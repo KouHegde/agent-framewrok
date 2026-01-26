@@ -61,11 +61,12 @@ public interface AgentDataFacade {
 
     /**
      * Create agent with a pre-generated ID.
-     * The same ID is used for both Java and Python services.
      *
-     * @param agentId pre-generated UUID (created by Java, passed to Python)
+     * @param agentId Java's UUID (primary key in our database)
+     * @param pythonAgentId Python's returned agent ID (used for run operations)
      */
-    AgentDto createAgentWithId(UUID agentId, String name, String description, String goal,
+    AgentDto createAgentWithId(UUID agentId, String pythonAgentId, 
+                               String name, String description, String goal,
                                String allowedTools, String agentSpec,
                                String createdBy, String tenantId,
                                List<String> mcpServers,

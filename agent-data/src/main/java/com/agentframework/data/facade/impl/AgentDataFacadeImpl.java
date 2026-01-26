@@ -49,6 +49,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                  String downstreamAgentId) {
         
         Agent agent = new Agent(name, description, allowedTools);
+        agent.setId(UUID.randomUUID());  // Generate ID since we removed @GeneratedValue
         agent.setGoal(goal);
         agent.setAgentSpec(agentSpec);
         agent.setCreatedBy(createdBy);
@@ -93,7 +94,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional
-    public AgentDto createAgentWithId(UUID agentId, String name, String description, String goal,
+    public AgentDto createAgentWithId(UUID agentId, String pythonAgentId,
+                                       String name, String description, String goal,
                                        String allowedTools, String agentSpec,
                                        String createdBy, String tenantId,
                                        List<String> mcpServers,
@@ -101,14 +103,14 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                        String downstreamStatus) {
         
         Agent agent = new Agent(name, description, allowedTools);
-        agent.setId(agentId);  // Use pre-generated ID
+        agent.setId(agentId);  // Java's ID as primary key
         agent.setGoal(goal);
         agent.setAgentSpec(agentSpec);
         agent.setCreatedBy(createdBy);
         agent.setTenantId(tenantId);
         applyConfig(agent, config);
         agent.setDownstreamStatus(downstreamStatus);
-        agent.setDownstreamAgentId(agentId.toString());  // Same ID for both Java and Python
+        agent.setDownstreamAgentId(pythonAgentId);  // Python's ID for run operations
         
         // Add MCP servers
         if (mcpServers != null) {
@@ -117,7 +119,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         }
 
         Agent saved = agentRepository.save(agent);
-        log.info("Created agent {} with pre-generated ID: {}", name, saved.getId());
+        log.info("Created agent {} - Java ID: {}, Python ID: {}", name, saved.getId(), pythonAgentId);
         return toDto(saved);
     }
 
