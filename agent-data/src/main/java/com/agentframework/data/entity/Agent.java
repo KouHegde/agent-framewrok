@@ -2,7 +2,6 @@ package com.agentframework.data.entity;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -27,26 +26,34 @@ public class Agent {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    // Core Info
     @Column(name = "name", nullable = false)
     private String name;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "agent_spec", columnDefinition = "TEXT")
-    private String agentSpec;  // JSON string of the full AgentSpec
-
-    @Column(name = "user_id")
-    private String userId;
-
-    // Agent goal
-    @Column(name = "goal")
+    @Column(name = "goal", columnDefinition = "TEXT")
     private String goal;
 
+    // Lookup Key (for deduplication)
+    @Column(name = "allowed_tools", nullable = false, unique = true)
+    private String allowedTools;  // Sorted comma-separated tools
+
+    // Full Spec (JSON)
+    @Column(name = "agent_spec", columnDefinition = "TEXT")
+    private String agentSpec;
+
+    // Ownership
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(name = "tenant_id")
+    private String tenantId;
+
     // RAG Configuration
-    @Column(name = "rag_scope", columnDefinition = "TEXT")
-    @Convert(converter = StringArrayConverter.class)
-    private List<String> ragScope = new ArrayList<>();
+    @Column(name = "rag_scope")
+    private String ragScope;  // Comma-separated
 
     // Reasoning Configuration
     @Column(name = "reasoning_style")
@@ -66,9 +73,22 @@ public class Agent {
     @Column(name = "execution_mode")
     private String executionMode = "static";
 
-    @Column(name = "permissions", columnDefinition = "TEXT")
-    @Convert(converter = StringArrayConverter.class)
-    private List<String> permissions = new ArrayList<>(List.of("read_only"));
+    @Column(name = "permissions")
+    private String permissions = "read_only";  // Comma-separated
+
+    // Python AgentBrain Response
+    @Column(name = "system_prompt", columnDefinition = "TEXT")
+    private String systemPrompt;
+
+    @Column(name = "max_steps")
+    private Integer maxSteps = 6;
+
+    @Column(name = "brain_agent_id")
+    private String brainAgentId;
+
+    // Status
+    @Column(name = "status")
+    private String status = "active";
 
     // Timestamps
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -84,15 +104,10 @@ public class Agent {
     public Agent() {
     }
 
-    public Agent(String name, String description) {
+    public Agent(String name, String description, String allowedTools) {
         this.name = name;
         this.description = description;
-    }
-
-    public Agent(String name, String description, String userId) {
-        this.name = name;
-        this.description = description;
-        this.userId = userId;
+        this.allowedTools = allowedTools;
     }
 
     @PrePersist
@@ -132,22 +147,6 @@ public class Agent {
         this.description = description;
     }
 
-    public String getAgentSpec() {
-        return agentSpec;
-    }
-
-    public void setAgentSpec(String agentSpec) {
-        this.agentSpec = agentSpec;
-    }
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-
     public String getGoal() {
         return goal;
     }
@@ -156,11 +155,43 @@ public class Agent {
         this.goal = goal;
     }
 
-    public List<String> getRagScope() {
+    public String getAllowedTools() {
+        return allowedTools;
+    }
+
+    public void setAllowedTools(String allowedTools) {
+        this.allowedTools = allowedTools;
+    }
+
+    public String getAgentSpec() {
+        return agentSpec;
+    }
+
+    public void setAgentSpec(String agentSpec) {
+        this.agentSpec = agentSpec;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
+    }
+
+    public String getRagScope() {
         return ragScope;
     }
 
-    public void setRagScope(List<String> ragScope) {
+    public void setRagScope(String ragScope) {
         this.ragScope = ragScope;
     }
 
@@ -204,12 +235,44 @@ public class Agent {
         this.executionMode = executionMode;
     }
 
-    public List<String> getPermissions() {
+    public String getPermissions() {
         return permissions;
     }
 
-    public void setPermissions(List<String> permissions) {
+    public void setPermissions(String permissions) {
         this.permissions = permissions;
+    }
+
+    public String getSystemPrompt() {
+        return systemPrompt;
+    }
+
+    public void setSystemPrompt(String systemPrompt) {
+        this.systemPrompt = systemPrompt;
+    }
+
+    public Integer getMaxSteps() {
+        return maxSteps;
+    }
+
+    public void setMaxSteps(Integer maxSteps) {
+        this.maxSteps = maxSteps;
+    }
+
+    public String getBrainAgentId() {
+        return brainAgentId;
+    }
+
+    public void setBrainAgentId(String brainAgentId) {
+        this.brainAgentId = brainAgentId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public OffsetDateTime getCreatedAt() {

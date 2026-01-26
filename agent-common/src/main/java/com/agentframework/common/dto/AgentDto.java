@@ -10,20 +10,27 @@ import java.util.UUID;
  * Shared between data and service modules.
  */
 public record AgentDto(
+        // Core Info
         UUID id,
         String name,
         String description,
-        String agentSpec,  // JSON string of AgentSpec
-        String userId,
-        
-        // Agent goal
         String goal,
+        
+        // Lookup Key
+        String allowedTools,  // Sorted comma-separated
+        
+        // Full Spec
+        String agentSpec,     // JSON string
+        
+        // Ownership
+        String createdBy,
+        String tenantId,
         
         // MCP Servers
         List<String> mcpServerNames,
         
         // RAG Configuration
-        List<String> ragScope,
+        String ragScope,
         
         // Reasoning Configuration
         String reasoningStyle,
@@ -35,7 +42,15 @@ public record AgentDto(
         
         // Execution Configuration
         String executionMode,
-        List<String> permissions,
+        String permissions,
+        
+        // Python AgentBrain Response
+        String systemPrompt,
+        Integer maxSteps,
+        String brainAgentId,
+        
+        // Status
+        String status,
         
         // Timestamps
         OffsetDateTime createdAt,

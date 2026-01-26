@@ -1,6 +1,5 @@
 package com.agentframework.data.facade;
 
-import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
 
 import java.util.List;
@@ -13,75 +12,81 @@ import java.util.UUID;
 public interface AgentDataFacade {
 
     /**
-     * Creates a new agent or returns existing one if already present (by name).
+     * Find agent by allowed tools (for deduplication).
+     * This is the primary lookup method.
      *
-     * @param name           the agent name (unique identifier)
-     * @param description    the agent description
-     * @param agentSpec      the agent specification (JSON string)
-     * @param mcpServerNames list of MCP server names required for this agent
-     * @return the created or existing agent DTO
-     */
-    AgentDto getOrCreateAgent(String name, String description, String agentSpec, List<String> mcpServerNames);
-
-    /**
-     * Creates a new agent or returns existing one (with user context).
-     */
-    AgentDto getOrCreateAgent(String name, String description, String agentSpec, String userId, List<String> mcpServerNames);
-
-    /**
-     * Updates an existing agent's configuration.
-     *
-     * @param agentId        the agent ID
-     * @param description    new description (null to keep existing)
-     * @param agentSpec      new agent spec (null to keep existing)
-     * @param mcpServerNames new list of MCP servers (null to keep existing)
-     * @return the updated agent DTO
-     */
-    AgentDto updateAgent(UUID agentId, String description, String agentSpec, List<String> mcpServerNames);
-
-    /**
-     * Finds an agent by name.
-     *
-     * @param name the agent name
+     * @param allowedTools sorted comma-separated tool names
      * @return optional containing the agent if found
      */
-    Optional<AgentDto> findAgentByName(String name);
+    Optional<AgentDto> findByAllowedTools(String allowedTools);
 
     /**
-     * Finds an agent by its ID.
+     * Check if agent exists with given tools.
      */
-    Optional<AgentDto> findAgentById(UUID agentId);
+    boolean existsByAllowedTools(String allowedTools);
 
     /**
-     * Lists all agents.
+     * Create a new agent.
      *
-     * @return list of all agents
+     * @param name         display name
+     * @param description  what the agent does
+     * @param goal         agent's objective
+     * @param allowedTools sorted comma-separated tool names
+     * @param agentSpec    full AgentSpec as JSON
+     * @param createdBy    who created it
+     * @param tenantId     organization/workspace
+     * @param mcpServers   list of MCP server names
+     * @return the created agent DTO
      */
-    List<AgentDto> listAllAgents();
+    AgentDto createAgent(String name, String description, String goal,
+                         String allowedTools, String agentSpec,
+                         String createdBy, String tenantId,
+                         List<String> mcpServers);
 
     /**
-     * Lists agents for a specific user.
-     *
-     * @param userId the user identifier
-     * @return list of agents for the user
+     * Get or create agent based on allowed tools.
+     * If agent with same tools exists, returns existing.
+     * Otherwise, creates new agent.
      */
-    List<AgentDto> listAgentsByUser(String userId);
+    AgentDto getOrCreateAgent(String name, String description, String goal,
+                              String allowedTools, String agentSpec,
+                              String createdBy, String tenantId,
+                              List<String> mcpServers);
 
     /**
-     * Checks if an agent already exists with the given name.
-     *
-     * @param name the agent name
-     * @return true if an agent exists
+     * Update agent configuration.
      */
-    boolean agentExists(String name);
+    AgentDto updateAgent(UUID agentId, String description, String agentSpec,
+                         String executionMode, String permissions);
 
     /**
-     * Deletes an agent by its ID.
+     * Update agent's Python AgentBrain response.
+     */
+    AgentDto updateBrainResponse(UUID agentId, String brainAgentId,
+                                  String systemPrompt, Integer maxSteps);
+
+    /**
+     * Find agent by ID.
+     */
+    Optional<AgentDto> findById(UUID agentId);
+
+    /**
+     * List all agents.
+     */
+    List<AgentDto> findAll();
+
+    /**
+     * List agents by creator.
+     */
+    List<AgentDto> findByCreatedBy(String createdBy);
+
+    /**
+     * List agents by tenant.
+     */
+    List<AgentDto> findByTenantId(String tenantId);
+
+    /**
+     * Delete agent by ID.
      */
     void deleteAgent(UUID agentId);
-
-    /**
-     * Updates agent configuration (RAG, reasoning, etc.)
-     */
-    AgentDto updateAgentConfig(UUID agentId, AgentConfigDto config);
 }

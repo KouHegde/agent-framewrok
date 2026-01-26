@@ -137,11 +137,17 @@ public class AgentController {
 
     /**
      * Create a new agent (persisted to database).
-     * If agent with same name exists, returns existing agent.
+     * 
+     * Flow:
+     * 1. Build agent spec from MCP tools (to get allowed_tools)
+     * 2. Check if agent with SAME TOOLS already exists (deduplication by functionality)
+     * 3. If exists, return existing agent
+     * 4. If not, call Python AgentBrain service (if enabled)
+     * 5. Store new agent in DB
      * 
      * Request:
      * POST /api/agents
-     * { "name": "Jira Issue Fetcher", "description": "Fetch Jira issues" }
+     * { "name": "Jira Issue Fetcher", "description": "Fetch Jira issues", "owner_id": "user-123", "tenant_id": "tenant-xyz" }
      * 
      * Response:
      * { "agentId": "uuid", "name": "...", "status": "created" or "existing", ... }
@@ -150,12 +156,54 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> createAgent(@RequestBody CreateAgentRequest request) {
         log.info("Creating agent: {}", request.getName());
 
-        // Build agent spec
+        // Step 1: Build agent spec from MCP tools
+        log.info("Building agent spec for: {}", request.getName());
         AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
-        
-        // Check if database is available
+        log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
+
+        // Create normalized allowed_tools string for deduplication lookup
+        // Normalize: lowercase, trim, filter empty, distinct, sorted
+        List<String> normalizedTools = agentSpec.getAllowedTools().stream()
+                .map(String::toLowerCase)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .sorted()
+                .toList();
+        String allowedToolsKey = String.join(",", normalizedTools);
+        log.info("Normalized tools key for deduplication: {}", allowedToolsKey);
+
+        // Step 2: Check if agent with SAME TOOLS already exists
+        if (agentDataFacade != null && agentDataFacade.existsByAllowedTools(allowedToolsKey)) {
+            log.info("Agent with same tools already exists. Returning existing agent.");
+            var existingAgent = agentDataFacade.findByAllowedTools(allowedToolsKey);
+            if (existingAgent.isPresent()) {
+                var agentDto = existingAgent.get();
+                String agentId = agentDto.id().toString();
+                Map<String, Object> response = new java.util.HashMap<>();
+                response.put("agentId", agentId);
+                response.put("name", agentDto.name());
+                response.put("description", agentDto.description() != null ? agentDto.description() : "");
+                response.put("status", "existing");
+                response.put("message", "Found existing agent with same capabilities");
+                response.put("allowedTools", normalizedTools);
+                response.put("mcpServers", agentDto.mcpServerNames());
+                response.put("createdAt", agentDto.createdAt().toString());
+                
+                // Include run endpoint for easy execution
+                response.put("runEndpoint", "/api/agents/" + agentId + "/run");
+                response.put("runExample", Map.of(
+                    "method", "POST",
+                    "url", "/api/agents/" + agentId + "/run",
+                    "body", Map.of("query", "Your query here")
+                ));
+                
+                return ResponseEntity.ok(response);
+            }
+        }
+
+        // Step 3: Check if database is available
         if (agentDataFacade == null) {
-            // Database not configured - return spec without persistence
             log.warn("Database not configured. Agent will not be persisted.");
             return ResponseEntity.ok(Map.of(
                     "status", "created_temp",
@@ -164,36 +212,59 @@ public class AgentController {
             ));
         }
 
-        // Save to database
+        // Step 4: Save to database
         try {
             String agentSpecJson = objectMapper.writeValueAsString(agentSpec);
+            
+            // Extract MCP server names from tool names
             List<String> mcpServers = agentSpec.getAllowedTools().stream()
-                    .map(tool -> tool.contains("_") ? tool.split("_")[1] : tool)
+                    .map(tool -> {
+                        // Tool format: mcp_jira_call_jira_rest_api -> jira
+                        if (tool.startsWith("mcp_")) {
+                            String[] parts = tool.substring(4).split("_", 2);
+                            return parts[0];
+                        }
+                        return tool;
+                    })
                     .distinct()
                     .toList();
 
-            boolean existed = agentDataFacade.agentExists(request.getName());
             var agentDto = agentDataFacade.getOrCreateAgent(
                     request.getName(),
                     request.getDescription(),
+                    agentSpec.getGoal(),
+                    allowedToolsKey,
                     agentSpecJson,
+                    request.getOwnerId(),
+                    request.getTenantId(),
                     mcpServers
             );
 
-            log.info("Agent {} with ID: {}", existed ? "found" : "created", agentDto.id());
+            log.info("Agent created with ID: {}", agentDto.id());
 
-            return ResponseEntity.ok(Map.of(
-                    "agentId", agentDto.id().toString(),
-                    "name", agentDto.name(),
-                    "description", agentDto.description() != null ? agentDto.description() : "",
-                    "status", existed ? "existing" : "created",
-                    "mcpServers", agentDto.mcpServerNames(),
-                    "allowedTools", agentSpec.getAllowedTools(),
-                    "createdAt", agentDto.createdAt().toString()
+            // Build response
+            String agentId = agentDto.id().toString();
+            Map<String, Object> response = new java.util.HashMap<>();
+            response.put("agentId", agentId);
+            response.put("name", agentDto.name());
+            response.put("description", agentDto.description() != null ? agentDto.description() : "");
+            response.put("status", "created");
+            response.put("allowedTools", normalizedTools);
+            response.put("mcpServers", agentDto.mcpServerNames());
+            response.put("createdAt", agentDto.createdAt().toString());
+            
+            // Include run endpoint for easy execution
+            response.put("runEndpoint", "/api/agents/" + agentId + "/run");
+            response.put("runExample", Map.of(
+                "method", "POST",
+                "url", "/api/agents/" + agentId + "/run",
+                "body", Map.of("query", "Your query here")
             ));
 
+            return ResponseEntity.ok(response);
+
         } catch (Exception e) {
-            log.error("Failed to save agent: {}", e.getMessage());
+            log.error("Failed to save agent: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Failed to save agent",
                     "message", e.getMessage()
@@ -215,7 +286,7 @@ public class AgentController {
             ));
         }
 
-        var agents = agentDataFacade.listAllAgents();
+        var agents = agentDataFacade.findAll();
         return ResponseEntity.ok(Map.of(
                 "total", agents.size(),
                 "agents", agents.stream().map(a -> Map.of(
@@ -239,7 +310,7 @@ public class AgentController {
             return ResponseEntity.badRequest().body(Map.of("error", "Database not configured"));
         }
 
-        return agentDataFacade.findAgentById(agentId)
+        return agentDataFacade.findById(agentId)
                 .map(agent -> ResponseEntity.ok(Map.of(
                         "agentId", agent.id().toString(),
                         "name", agent.name(),
@@ -267,7 +338,7 @@ public class AgentController {
             return ResponseEntity.badRequest().body(Map.of("error", "Database not configured"));
         }
 
-        var agentOpt = agentDataFacade.findAgentById(agentId);
+        var agentOpt = agentDataFacade.findById(agentId);
         if (agentOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }

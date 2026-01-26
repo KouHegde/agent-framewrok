@@ -1,6 +1,5 @@
 package com.agentframework.data.facade.impl;
 
-import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
 import com.agentframework.data.entity.Agent;
 import com.agentframework.data.entity.AgentMcpServer;
@@ -27,58 +26,64 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
     }
 
     @Override
-    @Transactional
-    public AgentDto getOrCreateAgent(String name, String description, String agentSpec, List<String> mcpServerNames) {
-        return getOrCreateAgent(name, description, agentSpec, null, mcpServerNames);
+    @Transactional(readOnly = true)
+    public Optional<AgentDto> findByAllowedTools(String allowedTools) {
+        return agentRepository.findByAllowedTools(allowedTools).map(this::toDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByAllowedTools(String allowedTools) {
+        return agentRepository.existsByAllowedTools(allowedTools);
     }
 
     @Override
     @Transactional
-    public AgentDto getOrCreateAgent(String name, String description, String agentSpec, String userId, List<String> mcpServerNames) {
-        validateName(name);
-
-        Optional<Agent> existing = agentRepository.findByName(name);
-        if (existing.isPresent()) {
-            log.info("Found existing agent with name: {}", name);
-            return toDto(existing.get());
+    public AgentDto createAgent(String name, String description, String goal,
+                                 String allowedTools, String agentSpec,
+                                 String createdBy, String tenantId,
+                                 List<String> mcpServers) {
+        
+        Agent agent = new Agent(name, description, allowedTools);
+        agent.setGoal(goal);
+        agent.setAgentSpec(agentSpec);
+        agent.setCreatedBy(createdBy);
+        agent.setTenantId(tenantId);
+        
+        // Add MCP servers
+        if (mcpServers != null) {
+            mcpServers.forEach(serverName -> 
+                agent.addMcpServer(new AgentMcpServer(serverName)));
         }
 
-        Agent agent = new Agent(name, description, userId);
-        agent.setAgentSpec(agentSpec);
-        addMcpServers(agent, mcpServerNames);
-
         Agent saved = agentRepository.save(agent);
-        log.info("Created agent {} with name: {}", saved.getId(), name);
+        log.info("Created agent {} with ID: {}", name, saved.getId());
         return toDto(saved);
     }
 
-    private void applyConfig(Agent agent, AgentConfigDto config) {
-        if (config.ragScope() != null) {
-            agent.setRagScope(config.ragScope());
+    @Override
+    @Transactional
+    public AgentDto getOrCreateAgent(String name, String description, String goal,
+                                      String allowedTools, String agentSpec,
+                                      String createdBy, String tenantId,
+                                      List<String> mcpServers) {
+        
+        // Check if agent with same tools already exists
+        Optional<Agent> existing = agentRepository.findByAllowedTools(allowedTools);
+        if (existing.isPresent()) {
+            log.info("Found existing agent with same tools: {}", existing.get().getId());
+            return toDto(existing.get());
         }
-        if (config.reasoningStyle() != null) {
-            agent.setReasoningStyle(config.reasoningStyle());
-        }
-        if (config.temperature() != null) {
-            agent.setTemperature(config.temperature());
-        }
-        if (config.retrieverType() != null) {
-            agent.setRetrieverType(config.retrieverType());
-        }
-        if (config.retrieverK() != null) {
-            agent.setRetrieverK(config.retrieverK());
-        }
-        if (config.executionMode() != null) {
-            agent.setExecutionMode(config.executionMode());
-        }
-        if (config.permissions() != null) {
-            agent.setPermissions(config.permissions());
-        }
+
+        // Create new agent
+        return createAgent(name, description, goal, allowedTools, agentSpec, 
+                          createdBy, tenantId, mcpServers);
     }
 
     @Override
     @Transactional
-    public AgentDto updateAgent(UUID agentId, String description, String agentSpec, List<String> mcpServerNames) {
+    public AgentDto updateAgent(UUID agentId, String description, String agentSpec,
+                                 String executionMode, String permissions) {
         Agent agent = agentRepository.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
 
@@ -88,42 +93,49 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         if (agentSpec != null) {
             agent.setAgentSpec(agentSpec);
         }
-        if (mcpServerNames != null) {
-            agent.getMcpServers().clear();
-            addMcpServers(agent, mcpServerNames);
+        if (executionMode != null) {
+            agent.setExecutionMode(executionMode);
+        }
+        if (permissions != null) {
+            agent.setPermissions(permissions);
         }
 
         Agent updated = agentRepository.save(agent);
-        log.info("Updated MCP servers for agent: {}", agentId);
+        log.info("Updated agent: {}", agentId);
         return toDto(updated);
     }
 
     @Override
     @Transactional
-    public AgentDto updateAgentConfig(UUID agentId, AgentConfigDto config) {
+    public AgentDto updateBrainResponse(UUID agentId, String brainAgentId,
+                                         String systemPrompt, Integer maxSteps) {
         Agent agent = agentRepository.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
-        applyConfig(agent, config);
+
+        if (brainAgentId != null) {
+            agent.setBrainAgentId(brainAgentId);
+        }
+        if (systemPrompt != null) {
+            agent.setSystemPrompt(systemPrompt);
+        }
+        if (maxSteps != null) {
+            agent.setMaxSteps(maxSteps);
+        }
+
         Agent updated = agentRepository.save(agent);
-        log.info("Updated config for agent: {}", agentId);
+        log.info("Updated brain response for agent: {}", agentId);
         return toDto(updated);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<AgentDto> findAgentByName(String name) {
-        return agentRepository.findByName(name).map(this::toDto);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Optional<AgentDto> findAgentById(UUID agentId) {
+    public Optional<AgentDto> findById(UUID agentId) {
         return agentRepository.findById(agentId).map(this::toDto);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<AgentDto> listAllAgents() {
+    public List<AgentDto> findAll() {
         return agentRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::toDto)
                 .toList();
@@ -131,16 +143,18 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AgentDto> listAgentsByUser(String userId) {
-        return agentRepository.findByUserId(userId).stream()
+    public List<AgentDto> findByCreatedBy(String createdBy) {
+        return agentRepository.findByCreatedBy(createdBy).stream()
                 .map(this::toDto)
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public boolean agentExists(String name) {
-        return agentRepository.existsByName(name);
+    public List<AgentDto> findByTenantId(String tenantId) {
+        return agentRepository.findByTenantId(tenantId).stream()
+                .map(this::toDto)
+                .toList();
     }
 
     @Override
@@ -148,18 +162,6 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
     public void deleteAgent(UUID agentId) {
         agentRepository.deleteById(agentId);
         log.info("Deleted agent: {}", agentId);
-    }
-
-    private void validateName(String name) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Agent name cannot be null or blank");
-        }
-    }
-
-    private void addMcpServers(Agent agent, List<String> serverNames) {
-        if (serverNames != null) {
-            serverNames.forEach(serverName -> agent.addMcpServer(new AgentMcpServer(serverName)));
-        }
     }
 
     private AgentDto toDto(Agent agent) {
@@ -171,9 +173,11 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                 agent.getId(),
                 agent.getName(),
                 agent.getDescription(),
-                agent.getAgentSpec(),
-                agent.getUserId(),
                 agent.getGoal(),
+                agent.getAllowedTools(),
+                agent.getAgentSpec(),
+                agent.getCreatedBy(),
+                agent.getTenantId(),
                 mcpServerNames,
                 agent.getRagScope(),
                 agent.getReasoningStyle(),
@@ -182,6 +186,10 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                 agent.getRetrieverK(),
                 agent.getExecutionMode(),
                 agent.getPermissions(),
+                agent.getSystemPrompt(),
+                agent.getMaxSteps(),
+                agent.getBrainAgentId(),
+                agent.getStatus(),
                 agent.getCreatedAt(),
                 agent.getUpdatedAt()
         );

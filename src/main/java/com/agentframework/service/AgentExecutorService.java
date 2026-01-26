@@ -280,7 +280,8 @@ public class AgentExecutorService {
         ));
 
         log.info("Calling MCP tool: {} with JSON-RPC request", mcpToolName);
-        log.debug("Request body: {}", objectMapper.writeValueAsString(jsonRpcRequest));
+        String requestJson = objectMapper.writeValueAsString(jsonRpcRequest);
+        log.info("Request body: {}", requestJson);
 
         // Select the appropriate MCP client based on category
         WebClient mcpClient = getMcpClient(category);
@@ -292,9 +293,9 @@ public class AgentExecutorService {
         }
 
         try {
-            // Send JSON-RPC request to MCP server
+            // Send JSON-RPC request to MCP server (trailing slash is important!)
             String response = mcpClient.post()
-                    .uri("")  // Base URL already contains the full endpoint
+                    .uri("/")  // Ensure trailing slash for MCP servers
                     .bodyValue(jsonRpcRequest)
                     .retrieve()
                     .bodyToMono(String.class)
@@ -493,8 +494,9 @@ public class AgentExecutorService {
 
         // Priority 1: User-provided explicit inputs (skip all detection)
         if (userInputs != null && !userInputs.isEmpty()) {
-            log.info("Using user-provided explicit inputs");
+            log.info("Using user-provided explicit inputs: {}", userInputs);
             arguments.putAll(userInputs);
+            log.info("Built arguments from user inputs: {}", arguments);
             return arguments;
         }
 

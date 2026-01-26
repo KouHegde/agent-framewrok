@@ -11,15 +11,39 @@ import java.util.UUID;
 @Repository
 public interface AgentRepository extends JpaRepository<Agent, UUID> {
 
-    Optional<Agent> findByName(String name);
+    /**
+     * Find agent by allowed tools (exact match).
+     * This is the primary lookup for deduplication.
+     */
+    Optional<Agent> findByAllowedTools(String allowedTools);
 
-    Optional<Agent> findByNameAndUserId(String name, String userId);
+    /**
+     * Check if agent exists with given tools.
+     */
+    boolean existsByAllowedTools(String allowedTools);
 
-    boolean existsByName(String name);
+    /**
+     * Find agent by name (may return multiple if names are not unique).
+     */
+    List<Agent> findByName(String name);
 
-    boolean existsByNameAndUserId(String name, String userId);
+    /**
+     * Find agents by creator.
+     */
+    List<Agent> findByCreatedBy(String createdBy);
 
-    List<Agent> findByUserId(String userId);
+    /**
+     * Find agents by tenant.
+     */
+    List<Agent> findByTenantId(String tenantId);
 
+    /**
+     * Find all active agents.
+     */
+    List<Agent> findByStatus(String status);
+
+    /**
+     * Find all agents ordered by creation date.
+     */
     List<Agent> findAllByOrderByCreatedAtDesc();
 }
