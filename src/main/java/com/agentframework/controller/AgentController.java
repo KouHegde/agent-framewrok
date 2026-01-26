@@ -60,8 +60,8 @@ public class AgentController {
 
         AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
 
-        log.info("Generated agent spec: {} with tools: {}", 
-                agentSpec.getAgentName(), 
+        log.info("Generated agent spec: {} with tools: {}",
+                agentSpec.getAgentName(),
                 agentSpec.getAllowedTools());
 
         return ResponseEntity.ok(agentSpec);
@@ -77,8 +77,8 @@ public class AgentController {
 
         AgentExecutionResponse response = agentExecutorService.executeAgent(request);
 
-        log.info("Agent execution completed. Status: {}, Tools used: {}", 
-                response.getStatus(), 
+        log.info("Agent execution completed. Status: {}, Tools used: {}",
+                response.getStatus(),
                 response.getToolsUsed().size());
 
         return ResponseEntity.ok(response);
@@ -87,7 +87,7 @@ public class AgentController {
     /**
      * Combined endpoint: Create agent spec and run it in one call.
      * Useful for quick testing and simple use cases.
-     * 
+     *
      * Request body:
      * {
      *   "name": "Agent Name",

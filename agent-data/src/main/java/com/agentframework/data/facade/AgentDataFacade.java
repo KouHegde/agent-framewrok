@@ -1,5 +1,6 @@
 package com.agentframework.data.facade;
 
+import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
 
 import java.util.List;
@@ -8,7 +9,6 @@ import java.util.UUID;
 
 /**
  * Facade interface for agent data operations.
- * This is the main entry point for other modules to interact with agent data.
  */
 public interface AgentDataFacade {
 
@@ -49,9 +49,6 @@ public interface AgentDataFacade {
 
     /**
      * Finds an agent by its ID.
-     *
-     * @param agentId the agent ID
-     * @return optional containing the agent if found
      */
     Optional<AgentDto> findAgentById(UUID agentId);
 
@@ -80,8 +77,6 @@ public interface AgentDataFacade {
 
     /**
      * Deletes an agent by its ID.
-     *
-     * @param agentId the agent ID
      */
     void deleteAgent(UUID agentId);
 }

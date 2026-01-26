@@ -1,5 +1,6 @@
 package com.agentframework.common.dto;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -14,8 +15,30 @@ public record AgentDto(
         String description,
         String agentSpec,  // JSON string of AgentSpec
         String userId,
-        String userConfig,
+        
+        // Agent description/goal
+        String description,
+        String goal,
+        
+        // MCP Servers
         List<String> mcpServerNames,
+        
+        // RAG Configuration
+        List<String> ragScope,
+        
+        // Reasoning Configuration
+        String reasoningStyle,
+        BigDecimal temperature,
+        
+        // Retriever Configuration
+        String retrieverType,
+        Integer retrieverK,
+        
+        // Execution Configuration
+        String executionMode,
+        List<String> permissions,
+        
+        // Timestamps
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

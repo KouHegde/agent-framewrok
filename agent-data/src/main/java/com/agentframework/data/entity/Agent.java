@@ -2,6 +2,7 @@ package com.agentframework.data.entity;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -12,6 +13,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,15 +39,48 @@ public class Agent {
     @Column(name = "user_id")
     private String userId;
 
-    @Column(name = "user_config")
-    private String userConfig;
+    // Agent description/goal
+    @Column(name = "description")
+    private String description;
 
+    @Column(name = "goal")
+    private String goal;
+
+    // RAG Configuration
+    @Column(name = "rag_scope", columnDefinition = "TEXT[]")
+    @Convert(converter = StringArrayConverter.class)
+    private List<String> ragScope = new ArrayList<>();
+
+    // Reasoning Configuration
+    @Column(name = "reasoning_style")
+    private String reasoningStyle = "direct";
+
+    @Column(name = "temperature", precision = 3, scale = 2)
+    private BigDecimal temperature = new BigDecimal("0.30");
+
+    // Retriever Configuration
+    @Column(name = "retriever_type")
+    private String retrieverType = "simple";
+
+    @Column(name = "retriever_k")
+    private Integer retrieverK = 5;
+
+    // Execution Configuration
+    @Column(name = "execution_mode")
+    private String executionMode = "static";
+
+    @Column(name = "permissions", columnDefinition = "TEXT[]")
+    @Convert(converter = StringArrayConverter.class)
+    private List<String> permissions = new ArrayList<>(List.of("read_only"));
+
+    // Timestamps
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    // MCP Servers relationship
     @OneToMany(mappedBy = "agent", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<AgentMcpServer> mcpServers = new ArrayList<>();
 
@@ -73,6 +108,8 @@ public class Agent {
     protected void onUpdate() {
         updatedAt = OffsetDateTime.now();
     }
+
+    // Getters and Setters
 
     public UUID getId() {
         return id;
@@ -114,12 +151,76 @@ public class Agent {
         this.userId = userId;
     }
 
-    public String getUserConfig() {
-        return userConfig;
+    public String getDescription() {
+        return description;
     }
 
-    public void setUserConfig(String userConfig) {
-        this.userConfig = userConfig;
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getGoal() {
+        return goal;
+    }
+
+    public void setGoal(String goal) {
+        this.goal = goal;
+    }
+
+    public List<String> getRagScope() {
+        return ragScope;
+    }
+
+    public void setRagScope(List<String> ragScope) {
+        this.ragScope = ragScope;
+    }
+
+    public String getReasoningStyle() {
+        return reasoningStyle;
+    }
+
+    public void setReasoningStyle(String reasoningStyle) {
+        this.reasoningStyle = reasoningStyle;
+    }
+
+    public BigDecimal getTemperature() {
+        return temperature;
+    }
+
+    public void setTemperature(BigDecimal temperature) {
+        this.temperature = temperature;
+    }
+
+    public String getRetrieverType() {
+        return retrieverType;
+    }
+
+    public void setRetrieverType(String retrieverType) {
+        this.retrieverType = retrieverType;
+    }
+
+    public Integer getRetrieverK() {
+        return retrieverK;
+    }
+
+    public void setRetrieverK(Integer retrieverK) {
+        this.retrieverK = retrieverK;
+    }
+
+    public String getExecutionMode() {
+        return executionMode;
+    }
+
+    public void setExecutionMode(String executionMode) {
+        this.executionMode = executionMode;
+    }
+
+    public List<String> getPermissions() {
+        return permissions;
+    }
+
+    public void setPermissions(List<String> permissions) {
+        this.permissions = permissions;
     }
 
     public OffsetDateTime getCreatedAt() {
