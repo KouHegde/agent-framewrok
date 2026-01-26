@@ -28,19 +28,23 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional
-    public AgentDto getOrCreateAgent(String userId, String botId, String description, String goal,
-                                     List<String> mcpServerNames, AgentConfigDto config) {
-        validate(userId, botId);
+    public AgentDto getOrCreateAgent(String name, String description, String agentSpec, List<String> mcpServerNames) {
+        return getOrCreateAgent(name, description, agentSpec, null, mcpServerNames);
+    }
 
-        Optional<Agent> existing = agentRepository.findByUserIdAndBotId(userId, botId);
+    @Override
+    @Transactional
+    public AgentDto getOrCreateAgent(String name, String description, String agentSpec, String userId, List<String> mcpServerNames) {
+        validateName(name);
+
+        Optional<Agent> existing = agentRepository.findByName(name);
         if (existing.isPresent()) {
-            log.info("Found existing agent for user: {}, bot: {}", userId, botId);
+            log.info("Found existing agent with name: {}", name);
             return toDto(existing.get());
         }
 
-        Agent agent = new Agent(botId, userId);
-        agent.setDescription(description);
-        agent.setGoal(goal);
+        Agent agent = new Agent(name, description, userId);
+        agent.setAgentSpec(agentSpec);
         addMcpServers(agent, mcpServerNames);
 
         // Apply config if provided
@@ -49,7 +53,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         }
 
         Agent saved = agentRepository.save(agent);
-        log.info("Created agent {} for user: {}", saved.getId(), userId);
+        log.info("Created agent {} with name: {}", saved.getId(), name);
         return toDto(saved);
     }
 
@@ -79,9 +83,16 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional
-    public AgentDto updateAgentMcpServers(UUID agentId, List<String> mcpServerNames) {
-        Agent agent = findAgentOrThrow(agentId);
+    public AgentDto updateAgent(UUID agentId, String description, String agentSpec, List<String> mcpServerNames) {
+        Agent agent = agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
 
+        if (description != null) {
+            agent.setDescription(description);
+        }
+        if (agentSpec != null) {
+            agent.setAgentSpec(agentSpec);
+        }
         if (mcpServerNames != null) {
             agent.getMcpServers().clear();
             addMcpServers(agent, mcpServerNames);
@@ -104,8 +115,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<AgentDto> findAgent(String userId, String botId) {
-        return agentRepository.findByUserIdAndBotId(userId, botId).map(this::toDto);
+    public Optional<AgentDto> findAgentByName(String name) {
+        return agentRepository.findByName(name).map(this::toDto);
     }
 
     @Override
@@ -116,8 +127,24 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean agentExists(String userId, String botId) {
-        return agentRepository.existsByUserIdAndBotId(userId, botId);
+    public List<AgentDto> listAllAgents() {
+        return agentRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AgentDto> listAgentsByUser(String userId) {
+        return agentRepository.findByUserId(userId).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean agentExists(String name) {
+        return agentRepository.existsByName(name);
     }
 
     @Override
@@ -127,23 +154,15 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         log.info("Deleted agent: {}", agentId);
     }
 
-    private Agent findAgentOrThrow(UUID agentId) {
-        return agentRepository.findById(agentId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
-    }
-
-    private void validate(String userId, String botId) {
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("User ID cannot be null or blank");
-        }
-        if (botId == null || botId.isBlank()) {
-            throw new IllegalArgumentException("Bot ID cannot be null or blank");
+    private void validateName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Agent name cannot be null or blank");
         }
     }
 
     private void addMcpServers(Agent agent, List<String> serverNames) {
         if (serverNames != null) {
-            serverNames.forEach(name -> agent.addMcpServer(new AgentMcpServer(name)));
+            serverNames.forEach(serverName -> agent.addMcpServer(new AgentMcpServer(serverName)));
         }
     }
 
@@ -154,7 +173,9 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
         return new AgentDto(
                 agent.getId(),
-                agent.getBotId(),
+                agent.getName(),
+                agent.getDescription(),
+                agent.getAgentSpec(),
                 agent.getUserId(),
                 agent.getDescription(),
                 agent.getGoal(),

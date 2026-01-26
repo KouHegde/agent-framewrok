@@ -11,7 +11,9 @@ import java.util.UUID;
  */
 public record AgentDto(
         UUID id,
-        String botId,
+        String name,
+        String description,
+        String agentSpec,  // JSON string of AgentSpec
         String userId,
         
         // Agent description/goal

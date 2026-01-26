@@ -27,10 +27,16 @@ public class Agent {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "bot_id", nullable = false)
-    private String botId;
+    @Column(name = "name", nullable = false)
+    private String name;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "agent_spec", columnDefinition = "TEXT")
+    private String agentSpec;  // JSON string of the full AgentSpec
+
+    @Column(name = "user_id")
     private String userId;
 
     // Agent description/goal
@@ -81,8 +87,14 @@ public class Agent {
     public Agent() {
     }
 
-    public Agent(String botId, String userId) {
-        this.botId = botId;
+    public Agent(String name, String description) {
+        this.name = name;
+        this.description = description;
+    }
+
+    public Agent(String name, String description, String userId) {
+        this.name = name;
+        this.description = description;
         this.userId = userId;
     }
 
@@ -107,12 +119,28 @@ public class Agent {
         this.id = id;
     }
 
-    public String getBotId() {
-        return botId;
+    public String getName() {
+        return name;
     }
 
-    public void setBotId(String botId) {
-        this.botId = botId;
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getAgentSpec() {
+        return agentSpec;
+    }
+
+    public void setAgentSpec(String agentSpec) {
+        this.agentSpec = agentSpec;
     }
 
     public String getUserId() {
