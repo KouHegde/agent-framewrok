@@ -90,6 +90,9 @@ public class Agent {
     @Column(name = "status")
     private String status = "active";
 
+    @Column(name = "downstream_status")
+    private String downstreamStatus;
+
     // Timestamps
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -273,6 +276,14 @@ public class Agent {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getDownstreamStatus() {
+        return downstreamStatus;
+    }
+
+    public void setDownstreamStatus(String downstreamStatus) {
+        this.downstreamStatus = downstreamStatus;
     }
 
     public OffsetDateTime getCreatedAt() {

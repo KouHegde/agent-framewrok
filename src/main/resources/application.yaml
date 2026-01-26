@@ -42,3 +42,7 @@ logging:
     root: INFO
     com.agentframework: DEBUG
     org.springframework.web.reactive.function.client: DEBUG
+
+downstream:
+  agent:
+    url: ${DOWNSTREAM_AGENT_URL:http://localhost:8082}

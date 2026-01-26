@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS agents (
     
     -- Status
     status TEXT DEFAULT 'active',                -- active, inactive, draft
+    downstream_status TEXT,                      -- downstream creation status
     
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -80,6 +81,7 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS bot_id TEXT;
 ALTER TABLE agents ALTER COLUMN bot_id DROP NOT NULL;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS user_id TEXT;
 ALTER TABLE agents ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS downstream_status TEXT;
 
 DO $$
 BEGIN

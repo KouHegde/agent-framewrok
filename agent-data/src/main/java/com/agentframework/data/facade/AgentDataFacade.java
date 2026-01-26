@@ -42,7 +42,8 @@ public interface AgentDataFacade {
                          String allowedTools, String agentSpec,
                          String createdBy, String tenantId,
                          List<String> mcpServers,
-                         com.agentframework.common.dto.AgentConfigDto config);
+                         com.agentframework.common.dto.AgentConfigDto config,
+                         String downstreamStatus);
 
     /**
      * Get or create agent based on allowed tools.
@@ -53,7 +54,8 @@ public interface AgentDataFacade {
                               String allowedTools, String agentSpec,
                               String createdBy, String tenantId,
                               List<String> mcpServers,
-                              com.agentframework.common.dto.AgentConfigDto config);
+                              com.agentframework.common.dto.AgentConfigDto config,
+                              String downstreamStatus);
 
     /**
      * Update agent configuration.

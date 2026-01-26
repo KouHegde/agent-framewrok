@@ -24,4 +24,5 @@ public class AgentCreateResponse {
     private AgentSpec agentSpec;
     private Map<String, String> dataFetchStatus;
     private String dataFetchMessage;
+    private String downstreamStatus;
 }

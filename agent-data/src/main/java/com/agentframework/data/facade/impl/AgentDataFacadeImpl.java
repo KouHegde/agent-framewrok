@@ -44,7 +44,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                  String allowedTools, String agentSpec,
                                  String createdBy, String tenantId,
                                  List<String> mcpServers,
-                                 AgentConfigDto config) {
+                                 AgentConfigDto config,
+                                 String downstreamStatus) {
         
         Agent agent = new Agent(name, description, allowedTools);
         agent.setGoal(goal);
@@ -52,6 +53,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         agent.setCreatedBy(createdBy);
         agent.setTenantId(tenantId);
         applyConfig(agent, config);
+        agent.setDownstreamStatus(downstreamStatus);
+        agent.setDownstreamStatus(downstreamStatus);
         
         // Add MCP servers
         if (mcpServers != null) {
@@ -70,7 +73,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                       String allowedTools, String agentSpec,
                                       String createdBy, String tenantId,
                                       List<String> mcpServers,
-                                      AgentConfigDto config) {
+                                      AgentConfigDto config,
+                                      String downstreamStatus) {
         
         // Check if agent with same tools already exists
         Optional<Agent> existing = agentRepository.findByAllowedTools(allowedTools);
@@ -81,7 +85,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
         // Create new agent
         return createAgent(name, description, goal, allowedTools, agentSpec,
-                          createdBy, tenantId, mcpServers, config);
+                          createdBy, tenantId, mcpServers, config, downstreamStatus);
     }
 
     @Override

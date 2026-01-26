@@ -8,6 +8,10 @@ import com.agentframework.dto.AgentCreationOutcome;
 import com.agentframework.dto.AgentRunExample;
 import com.agentframework.dto.AgentSpec;
 import com.agentframework.dto.CreateAgentRequest;
+import com.agentframework.dto.DownstreamAgentCreateRequest;
+import com.agentframework.dto.DownstreamAgentCreateResponse;
+import com.agentframework.dto.DownstreamPolicy;
+import com.agentframework.dto.DownstreamTool;
 import com.agentframework.registry.MCPTool;
 import com.agentframework.registry.MCPToolRegistry;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -29,6 +33,7 @@ public class AgentCreationService {
     private final MCPToolRegistry toolRegistry;
     private final MCPDataFetcherService mcpDataFetcherService;
     private final ConfigDeciderService configDeciderService;
+    private final DownstreamAgentService downstreamAgentService;
     private final ObjectMapper objectMapper;
 
     @Autowired(required = false)
@@ -52,10 +57,13 @@ public class AgentCreationService {
         DecisionFetchResult fetchResult = fetchDecisionData(agentSpec.getAllowedTools());
         AgentConfigDto config = decideConfig(agentSpec, request, fetchResult.data());
         applyConfigToSpec(agentSpec, config);
-        AgentDto agent = persistNewAgent(request, agentSpec, allowedToolsKey, ownerId, config);
+        DownstreamAgentCreateResponse downstream = createDownstreamAgent(request, agentSpec, config);
+        String downstreamStatus = downstream.getStatus() != null ? downstream.getStatus() : "created";
+
+        AgentDto agent = persistNewAgent(request, agentSpec, allowedToolsKey, ownerId, config, downstreamStatus);
         log.info("Agent created: {}", agent.id());
         AgentCreateResponse response = buildFullResponse(agent, agentSpec, normalizedTools,
-                fetchResult.status(), fetchResult.message());
+                fetchResult.status(), fetchResult.message(), downstreamStatus);
         return new AgentCreationOutcome(response, true);
     }
 
@@ -108,7 +116,8 @@ public class AgentCreationService {
                                      AgentSpec agentSpec,
                                      String allowedToolsKey,
                                      String ownerId,
-                                     AgentConfigDto config) {
+                                     AgentConfigDto config,
+                                     String downstreamStatus) {
         String agentSpecJson = serializeAgentSpec(agentSpec);
         List<String> mcpServers = extractMcpServers(agentSpec.getAllowedTools());
 
@@ -121,7 +130,8 @@ public class AgentCreationService {
                 ownerId,
                 request.getTenantId(),
                 mcpServers,
-                config
+                config,
+                downstreamStatus
         );
     }
 
@@ -167,6 +177,7 @@ public class AgentCreationService {
             Map<String, Object> sample = mcpDataFetcherService.fetchDecisionData(category, tool.getName());
             data.put(category, sample);
             status.put(category, deriveStatus(sample));
+            log.debug("Decision fetch for {} via {}: {}", category, tool.getName(), status.get(category));
         }
 
         String message = buildFetchMessage(status);
@@ -218,7 +229,8 @@ public class AgentCreationService {
                 new AgentRunExample("POST", runEndpoint, Map.of("query", "Your query here")),
                 null,
                 status,
-                fetchMessage
+                fetchMessage,
+                null
         );
     }
 
@@ -226,7 +238,8 @@ public class AgentCreationService {
                                                   AgentSpec agentSpec,
                                                   List<String> normalizedTools,
                                                   Map<String, String> status,
-                                                  String fetchMessage) {
+                                                  String fetchMessage,
+                                                  String downstreamStatus) {
         String agentId = agent.id().toString();
         String runEndpoint = "/api/agents/" + agentId + "/run";
 
@@ -243,8 +256,101 @@ public class AgentCreationService {
                 new AgentRunExample("POST", runEndpoint, Map.of("query", "Your query here")),
                 agentSpec,
                 status,
-                fetchMessage
+                fetchMessage,
+                downstreamStatus
         );
+    }
+
+    private DownstreamAgentCreateResponse createDownstreamAgent(CreateAgentRequest request,
+                                                                AgentSpec agentSpec,
+                                                                AgentConfigDto config) {
+        DownstreamAgentCreateRequest payload = new DownstreamAgentCreateRequest(
+                request.getName(),
+                agentSpec.getGoal(),
+                request.getDescription(),
+                request.getOwnerId(),
+                request.getTenantId(),
+                agentSpec.getGoal(),
+                buildDownstreamTools(agentSpec.getAllowedTools()),
+                buildDownstreamPolicies(agentSpec.getAllowedTools()),
+                6,
+                config != null ? config.temperature() : null,
+                config != null ? config.ragScope() : List.of(),
+                config != null ? config.reasoningStyle() : null,
+                config != null ? config.retrieverType() : null,
+                config != null ? config.retrieverK() : null,
+                config != null ? config.executionMode() : null,
+                config != null ? config.permissions() : List.of()
+        );
+
+        return downstreamAgentService.createAgent(payload);
+    }
+
+    private List<DownstreamTool> buildDownstreamTools(List<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) {
+            return List.of();
+        }
+
+        return toolNames.stream()
+                .map(name -> {
+                    MCPTool tool = toolRegistry.getTool(name).orElse(null);
+                    String toolName = simplifyToolName(name);
+                    String description = tool != null ? tool.getDescription() : null;
+                    boolean requiresApproval = requiresApproval(toolName);
+                    return new DownstreamTool(toolName, description, requiresApproval);
+                })
+                .toList();
+    }
+
+    private List<DownstreamPolicy> buildDownstreamPolicies(List<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> approvalTools = toolNames.stream()
+                .map(this::simplifyToolName)
+                .filter(this::requiresApproval)
+                .toList();
+
+        if (approvalTools.isEmpty()) {
+            return List.of();
+        }
+
+        return List.of(new DownstreamPolicy(
+                "approval_required",
+                "tool-approval",
+                Map.of("tools", approvalTools)
+        ));
+    }
+
+    private boolean requiresApproval(String toolName) {
+        String name = toolName.toLowerCase();
+        return name.contains("post_") || name.contains("create") || name.contains("update") || name.contains("delete");
+    }
+
+    private String simplifyToolName(String fullName) {
+        String name = fullName;
+        if (name.startsWith("mcp_")) {
+            name = name.substring(4);
+        }
+        String[] knownTools = {
+                "call_jira_rest_api", "add_labels", "get_field_info",
+                "search_confluence_pages", "get_confluence_page_by_id",
+                "get_confluence_page_by_title", "get_confluence_page_by_url",
+                "call_confluence_rest_api",
+                "call_github_graphql_for_query", "get_pull_request_diff",
+                "call_github_restapi_for_search", "call_github_graphql_for_mutation",
+                "who_am_i", "get_person", "list_spaces", "get_space",
+                "list_memberships", "list_messages", "get_message", "post_message",
+                "get_context_around_message", "index_space_messages",
+                "retrieve_relevant", "ask_space"
+        };
+        for (String tool : knownTools) {
+            if (name.endsWith(tool)) {
+                return tool;
+            }
+        }
+        return name;
     }
 
     private String deriveStatus(Map<String, Object> sample) {
