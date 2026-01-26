@@ -60,6 +60,19 @@ public interface AgentDataFacade {
                               String downstreamAgentId);
 
     /**
+     * Create agent with a pre-generated ID.
+     * The same ID is used for both Java and Python services.
+     *
+     * @param agentId pre-generated UUID (created by Java, passed to Python)
+     */
+    AgentDto createAgentWithId(UUID agentId, String name, String description, String goal,
+                               String allowedTools, String agentSpec,
+                               String createdBy, String tenantId,
+                               List<String> mcpServers,
+                               com.agentframework.common.dto.AgentConfigDto config,
+                               String downstreamStatus);
+
+    /**
      * Update agent configuration.
      */
     AgentDto updateAgent(UUID agentId, String description, String agentSpec,

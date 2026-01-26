@@ -93,6 +93,36 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional
+    public AgentDto createAgentWithId(UUID agentId, String name, String description, String goal,
+                                       String allowedTools, String agentSpec,
+                                       String createdBy, String tenantId,
+                                       List<String> mcpServers,
+                                       AgentConfigDto config,
+                                       String downstreamStatus) {
+        
+        Agent agent = new Agent(name, description, allowedTools);
+        agent.setId(agentId);  // Use pre-generated ID
+        agent.setGoal(goal);
+        agent.setAgentSpec(agentSpec);
+        agent.setCreatedBy(createdBy);
+        agent.setTenantId(tenantId);
+        applyConfig(agent, config);
+        agent.setDownstreamStatus(downstreamStatus);
+        agent.setDownstreamAgentId(agentId.toString());  // Same ID for both Java and Python
+        
+        // Add MCP servers
+        if (mcpServers != null) {
+            mcpServers.forEach(serverName -> 
+                agent.addMcpServer(new AgentMcpServer(serverName)));
+        }
+
+        Agent saved = agentRepository.save(agent);
+        log.info("Created agent {} with pre-generated ID: {}", name, saved.getId());
+        return toDto(saved);
+    }
+
+    @Override
+    @Transactional
     public AgentDto updateAgent(UUID agentId, String description, String agentSpec,
                                  String executionMode, String permissions) {
         Agent agent = agentRepository.findById(agentId)

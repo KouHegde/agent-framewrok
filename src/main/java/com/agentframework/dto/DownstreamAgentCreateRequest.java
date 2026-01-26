@@ -12,6 +12,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DownstreamAgentCreateRequest {
+    @JsonProperty("agent_id")
+    private String agentId;  // Java-generated UUID, passed to Python
+    
     private String name;
     private String purpose;
     private String description;

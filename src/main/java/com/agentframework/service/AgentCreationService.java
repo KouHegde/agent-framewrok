@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -55,18 +56,26 @@ public class AgentCreationService {
             return existing;
         }
 
+        // Generate agentId in Java FIRST - this will be passed to Python and used for DB
+        UUID agentId = UUID.randomUUID();
+        log.info("Generated agentId: {}", agentId);
+
         DecisionFetchResult fetchResult = fetchDecisionData(agentSpec.getAllowedTools());
         AgentConfigDto config = decideConfig(agentSpec, request, fetchResult.data());
         applyConfigToSpec(agentSpec, config);
-        DownstreamAgentCreateResponse downstream = createDownstreamAgent(request, agentSpec, config, ownerId, tenantId);
+        
+        // Pass Java's agentId to Python service
+        DownstreamAgentCreateResponse downstream = createDownstreamAgent(agentId, request, agentSpec, config, ownerId, tenantId);
         String downstreamStatus = downstream.getStatus() != null ? downstream.getStatus() : "unknown";
-        String downstreamAgentId = downstream.getAgentId();
 
-        AgentDto agent = persistNewAgent(request, agentSpec, allowedToolsKey, ownerId, config,
-                downstreamStatus, downstreamAgentId);
+        // Use the SAME agentId for database persistence
+        AgentDto agent = persistNewAgent(agentId, request, agentSpec, allowedToolsKey, ownerId, config,
+                downstreamStatus);
         log.info("Agent created: {}", agent.id());
+        
+        // agentId is the SAME for both Java and Python (no separate downstreamAgentId)
         AgentCreateResponse response = buildFullResponse(agent, agentSpec, normalizedTools,
-                fetchResult.status(), fetchResult.message(), downstreamStatus, downstreamAgentId);
+                fetchResult.status(), fetchResult.message(), downstreamStatus, agentId.toString());
         return new AgentCreationOutcome(response, true);
     }
 
@@ -115,17 +124,18 @@ public class AgentCreationService {
         return new AgentCreationOutcome(response, false);
     }
 
-    private AgentDto persistNewAgent(CreateAgentRequest request,
+    private AgentDto persistNewAgent(UUID agentId,
+                                     CreateAgentRequest request,
                                      AgentSpec agentSpec,
                                      String allowedToolsKey,
                                      String ownerId,
                                      AgentConfigDto config,
-                                     String downstreamStatus,
-                                     String downstreamAgentId) {
+                                     String downstreamStatus) {
         String agentSpecJson = serializeAgentSpec(agentSpec);
         List<String> mcpServers = extractMcpServers(agentSpec.getAllowedTools());
 
-        return agentDataFacade.getOrCreateAgent(
+        return agentDataFacade.createAgentWithId(
+                agentId,  // Use pre-generated ID
                 request.getName(),
                 request.getDescription(),
                 agentSpec.getGoal(),
@@ -135,8 +145,7 @@ public class AgentCreationService {
                 request.getTenantId(),
                 mcpServers,
                 config,
-                downstreamStatus,
-                downstreamAgentId
+                downstreamStatus
         );
     }
 
@@ -269,29 +278,30 @@ public class AgentCreationService {
         );
     }
 
-    private DownstreamAgentCreateResponse createDownstreamAgent(CreateAgentRequest request,
+    private DownstreamAgentCreateResponse createDownstreamAgent(UUID agentId,
+                                                                CreateAgentRequest request,
                                                                 AgentSpec agentSpec,
                                                                 AgentConfigDto config,
                                                                 String ownerId,
                                                                 String tenantId) {
-        DownstreamAgentCreateRequest payload = new DownstreamAgentCreateRequest(
-                request.getName(),
-                agentSpec.getGoal(),
-                request.getDescription(),
-                ownerId,
-                tenantId,
-                agentSpec.getGoal(),
-                buildDownstreamTools(agentSpec.getAllowedTools()),
-                buildDownstreamPolicies(agentSpec.getAllowedTools()),
-                6,
-                config != null ? config.temperature() : null,
-                config != null ? config.ragScope() : List.of(),
-                config != null ? config.reasoningStyle() : null,
-                config != null ? config.retrieverType() : null,
-                config != null ? config.retrieverK() : null,
-                config != null ? config.executionMode() : null,
-                config != null ? config.permissions() : List.of()
-        );
+        DownstreamAgentCreateRequest payload = new DownstreamAgentCreateRequest();
+        payload.setAgentId(agentId.toString());  // Pass Java's agentId to Python
+        payload.setName(request.getName());
+        payload.setPurpose(agentSpec.getGoal());
+        payload.setDescription(request.getDescription());
+        payload.setOwnerId(ownerId);
+        payload.setTenantId(tenantId);
+        payload.setSystemPrompt(agentSpec.getGoal());
+        payload.setTools(buildDownstreamTools(agentSpec.getAllowedTools()));
+        payload.setPolicies(buildDownstreamPolicies(agentSpec.getAllowedTools()));
+        payload.setMaxSteps(6);
+        payload.setTemperature(config != null ? config.temperature() : null);
+        payload.setRagScope(config != null ? config.ragScope() : List.of());
+        payload.setReasoningStyle(config != null ? config.reasoningStyle() : null);
+        payload.setRetrieverType(config != null ? config.retrieverType() : null);
+        payload.setRetrieverK(config != null ? config.retrieverK() : null);
+        payload.setExecutionMode(config != null ? config.executionMode() : null);
+        payload.setPermissions(config != null ? config.permissions() : List.of());
 
         return downstreamAgentService.createAgent(payload);
     }
