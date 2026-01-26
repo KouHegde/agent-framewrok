@@ -17,6 +17,9 @@ public class DownstreamAgentRunRequest {
     @JsonProperty("user_id")
     private String userId;
 
+    @JsonProperty("session_id")
+    private String sessionId;
+
     @JsonProperty("max_iterations")
     private Integer maxIterations;
 

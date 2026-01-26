@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,6 +27,12 @@ public class DownstreamAgentService {
 
     @Value("${downstream.agent.url:http://localhost:8082}")
     private String downstreamAgentUrl;
+
+    /**
+     * In-memory session cache: downstreamAgentId -> activeSessionId.
+     * For single pod deployment. Consider Redis/DB for multi-pod.
+     */
+    private final ConcurrentHashMap<String, String> activeSessionCache = new ConcurrentHashMap<>();
 
     public DownstreamAgentCreateResponse createAgent(DownstreamAgentCreateRequest request) {
         WebClient client = WebClient.builder()
@@ -125,8 +134,11 @@ public class DownstreamAgentService {
                 .build();
 
         try {
-            log.info("Running downstream agent: {}", request.getAgentId());
-            log.debug("Downstream run payload: {}", objectMapper.writeValueAsString(request));
+            String requestUrl = downstreamAgentUrl + "/agents/" + request.getAgentId() + "/run";
+            String requestBody = objectMapper.writeValueAsString(request);
+
+            log.info("Calling downstream agent run - URL: {}", requestUrl);
+            log.info("Downstream request body: {}", requestBody);
 
             String response = client.post()
                     .uri("/agents/" + request.getAgentId() + "/run")
@@ -146,5 +158,70 @@ public class DownstreamAgentService {
         } catch (Exception e) {
             throw new IllegalStateException("Downstream agent run failed: " + e.getMessage(), e);
         }
+    }
+
+    // ==================== Session Management ====================
+
+    /**
+     * Get or create a session for the given agent.
+     * If no session exists, creates a new one.
+     *
+     * @param agentId the downstream agent ID
+     * @return the active session ID
+     */
+    public String getOrCreateSession(String agentId) {
+        return activeSessionCache.computeIfAbsent(agentId, k -> {
+            String newSessionId = UUID.randomUUID().toString();
+            log.info("Created new session for agent {}: {}", agentId, newSessionId);
+            return newSessionId;
+        });
+    }
+
+    /**
+     * Get the active session for an agent.
+     *
+     * @param agentId the downstream agent ID
+     * @return the active session ID, or null if no active session
+     */
+    public String getActiveSession(String agentId) {
+        return activeSessionCache.get(agentId);
+    }
+
+    /**
+     * Check if the given session ID matches the active session for the agent.
+     *
+     * @param agentId the downstream agent ID
+     * @param sessionId the session ID to validate
+     * @return true if session is valid (matches active or no active session exists)
+     */
+    public boolean isValidSession(String agentId, String sessionId) {
+        String activeSession = activeSessionCache.get(agentId);
+        if (activeSession == null) {
+            // No active session, any session is valid (or we'll create one)
+            return true;
+        }
+        return activeSession.equals(sessionId);
+    }
+
+    /**
+     * Clear the active session for an agent.
+     *
+     * @param agentId the downstream agent ID
+     */
+    public void clearSession(String agentId) {
+        String removed = activeSessionCache.remove(agentId);
+        if (removed != null) {
+            log.info("Cleared session for agent {}: {}", agentId, removed);
+        }
+    }
+
+    /**
+     * Check if agent has an active session.
+     *
+     * @param agentId the downstream agent ID
+     * @return true if there's an active session
+     */
+    public boolean hasActiveSession(String agentId) {
+        return activeSessionCache.containsKey(agentId);
     }
 }
