@@ -189,8 +189,11 @@ public class AgentCreationService {
     }
 
     private AgentCreateResponse buildSummaryResponse(AgentDto agent, String message) {
+        String agentId = agent.id().toString();
+        String runEndpoint = "/api/agents/" + agentId + "/run";
+
         return new AgentCreateResponse(
-                agent.id().toString(),
+                agentId,
                 agent.name(),
                 agent.description() != null ? agent.description() : "",
                 "existing",
@@ -198,8 +201,8 @@ public class AgentCreationService {
                 List.of(),
                 agent.mcpServerNames(),
                 agent.createdAt() != null ? agent.createdAt().toString() : null,
-                null,
-                null,
+                runEndpoint,
+                new AgentRunExample("POST", runEndpoint, Map.of("query", "Your query here")),
                 null
         );
     }
