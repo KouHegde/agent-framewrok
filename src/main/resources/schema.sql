@@ -54,6 +54,43 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 
 -- =====================================================
+-- AGENTS TABLE MIGRATIONS (for existing tables)
+-- =====================================================
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS goal TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS allowed_tools TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_spec TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS rag_scope TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS reasoning_style TEXT DEFAULT 'direct';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS temperature NUMERIC(3,2) DEFAULT 0.30;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS retriever_type TEXT DEFAULT 'simple';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS retriever_k INTEGER DEFAULT 5;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS execution_mode TEXT DEFAULT 'static';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT 'read_only';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS system_prompt TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_steps INTEGER DEFAULT 6;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS brain_agent_id TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS bot_id TEXT;
+ALTER TABLE agents ALTER COLUMN bot_id DROP NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'unique_allowed_tools'
+    ) THEN
+        ALTER TABLE agents ADD CONSTRAINT unique_allowed_tools UNIQUE (allowed_tools);
+    END IF;
+END $$;
+
+-- =====================================================
 -- AGENT MCP SERVERS TABLE
 -- Stores which MCP servers an agent uses
 -- =====================================================

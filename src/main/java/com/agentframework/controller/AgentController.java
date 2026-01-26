@@ -1,6 +1,7 @@
 package com.agentframework.controller;
 
 import com.agentframework.common.dto.AgentDto;
+import com.agentframework.dto.AgentConfigResponse;
 import com.agentframework.dto.AgentCreateResponse;
 import com.agentframework.dto.AgentDeleteResponse;
 import com.agentframework.dto.AgentDetailResponse;
@@ -231,6 +232,34 @@ public class AgentController {
     }
 
     /**
+     * Get agent config by ID.
+     *
+     * GET /api/agents/{id}/config
+     */
+    @GetMapping("/agents/{id}/config")
+    public ResponseEntity<?> getAgentConfig(@PathVariable("id") UUID agentId) {
+        var agentOpt = agentFacade != null
+                ? agentFacade.findAgentById(agentId)
+                : agentDataFacade.findById(agentId);
+
+        if (agentOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        var agent = agentOpt.get();
+        return ResponseEntity.ok(new AgentConfigResponse(
+                agent.id().toString(),
+                splitCsv(agent.ragScope()),
+                agent.reasoningStyle(),
+                agent.temperature(),
+                agent.retrieverType(),
+                agent.retrieverK(),
+                agent.executionMode(),
+                splitCsv(agent.permissions())
+        ));
+    }
+
+    /**
      * Run an agent by ID.
      * 
      * POST /api/agents/{id}/run
@@ -380,5 +409,15 @@ public class AgentController {
                 agent.createdAt().toString(),
                 agent.updatedAt().toString()
         );
+    }
+
+    private List<String> splitCsv(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 }
