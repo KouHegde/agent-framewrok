@@ -66,6 +66,21 @@ CREATE TABLE IF NOT EXISTS agent_mcp_servers (
 );
 
 -- =====================================================
+-- MCP TOOLS TABLE
+-- Stores MCP tool registry entries
+-- =====================================================
+CREATE TABLE IF NOT EXISTS mcp_tools (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    category TEXT,
+    capabilities TEXT,                            -- Comma-separated
+    required_inputs TEXT,                         -- Comma-separated
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =====================================================
 -- INDEXES
 -- =====================================================
 CREATE INDEX IF NOT EXISTS idx_agents_allowed_tools ON agents(allowed_tools);
@@ -74,3 +89,5 @@ CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_agent_id ON agent_mcp_servers(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_server_name ON agent_mcp_servers(server_name);
+CREATE INDEX IF NOT EXISTS idx_mcp_tools_name ON mcp_tools(name);
+CREATE INDEX IF NOT EXISTS idx_mcp_tools_category ON mcp_tools(category);

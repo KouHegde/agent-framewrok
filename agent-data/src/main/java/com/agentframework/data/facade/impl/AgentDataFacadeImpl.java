@@ -1,5 +1,6 @@
 package com.agentframework.data.facade.impl;
 
+import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
 import com.agentframework.data.entity.Agent;
 import com.agentframework.data.entity.AgentMcpServer;
@@ -42,13 +43,15 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
     public AgentDto createAgent(String name, String description, String goal,
                                  String allowedTools, String agentSpec,
                                  String createdBy, String tenantId,
-                                 List<String> mcpServers) {
+                                 List<String> mcpServers,
+                                 AgentConfigDto config) {
         
         Agent agent = new Agent(name, description, allowedTools);
         agent.setGoal(goal);
         agent.setAgentSpec(agentSpec);
         agent.setCreatedBy(createdBy);
         agent.setTenantId(tenantId);
+        applyConfig(agent, config);
         
         // Add MCP servers
         if (mcpServers != null) {
@@ -66,7 +69,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
     public AgentDto getOrCreateAgent(String name, String description, String goal,
                                       String allowedTools, String agentSpec,
                                       String createdBy, String tenantId,
-                                      List<String> mcpServers) {
+                                      List<String> mcpServers,
+                                      AgentConfigDto config) {
         
         // Check if agent with same tools already exists
         Optional<Agent> existing = agentRepository.findByAllowedTools(allowedTools);
@@ -76,8 +80,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         }
 
         // Create new agent
-        return createAgent(name, description, goal, allowedTools, agentSpec, 
-                          createdBy, tenantId, mcpServers);
+        return createAgent(name, description, goal, allowedTools, agentSpec,
+                          createdBy, tenantId, mcpServers, config);
     }
 
     @Override
@@ -193,5 +197,33 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                 agent.getCreatedAt(),
                 agent.getUpdatedAt()
         );
+    }
+
+    private void applyConfig(Agent agent, AgentConfigDto config) {
+        if (config == null) {
+            return;
+        }
+
+        if (config.ragScope() != null && !config.ragScope().isEmpty()) {
+            agent.setRagScope(String.join(",", config.ragScope()));
+        }
+        if (config.reasoningStyle() != null) {
+            agent.setReasoningStyle(config.reasoningStyle());
+        }
+        if (config.temperature() != null) {
+            agent.setTemperature(config.temperature());
+        }
+        if (config.retrieverType() != null) {
+            agent.setRetrieverType(config.retrieverType());
+        }
+        if (config.retrieverK() != null) {
+            agent.setRetrieverK(config.retrieverK());
+        }
+        if (config.executionMode() != null) {
+            agent.setExecutionMode(config.executionMode());
+        }
+        if (config.permissions() != null && !config.permissions().isEmpty()) {
+            agent.setPermissions(String.join(",", config.permissions()));
+        }
     }
 }

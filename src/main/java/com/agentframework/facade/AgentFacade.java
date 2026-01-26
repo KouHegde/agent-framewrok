@@ -2,7 +2,8 @@ package com.agentframework.facade;
 
 import com.agentframework.common.dto.AgentConfigDto;
 import com.agentframework.common.dto.AgentDto;
-import com.agentframework.dto.AgentSpec;
+import com.agentframework.dto.AgentCreateResponse;
+import com.agentframework.dto.CreateAgentRequest;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,9 +17,9 @@ public interface AgentFacade {
 
     /**
      * Creates a new agent with dynamic configuration.
-     * Orchestrates: MCP server selection → data fetch → config decision → persistence
+     * Orchestrates: MCP server selection → config decision → persistence
      */
-    AgentCreationResult createAgent(String userId, String name, String description);
+    AgentCreationResult createAgent(CreateAgentRequest request);
 
     /**
      * Refreshes an agent's configuration based on fresh MCP data.
@@ -46,6 +47,11 @@ public interface AgentFacade {
     Optional<AgentDto> findAgentById(UUID agentId);
 
     /**
+     * Lists all agents.
+     */
+    List<AgentDto> listAgents();
+
+    /**
      * Deletes an agent.
      */
     void deleteAgent(UUID agentId);
@@ -54,8 +60,7 @@ public interface AgentFacade {
      * Result of agent creation containing all relevant data.
      */
     record AgentCreationResult(
-            AgentDto agent,
-            AgentSpec spec,
-            AgentConfigDto config
+            AgentCreateResponse response,
+            boolean created
     ) {}
 }

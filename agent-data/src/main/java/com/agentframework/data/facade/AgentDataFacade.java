@@ -41,7 +41,8 @@ public interface AgentDataFacade {
     AgentDto createAgent(String name, String description, String goal,
                          String allowedTools, String agentSpec,
                          String createdBy, String tenantId,
-                         List<String> mcpServers);
+                         List<String> mcpServers,
+                         com.agentframework.common.dto.AgentConfigDto config);
 
     /**
      * Get or create agent based on allowed tools.
@@ -51,7 +52,8 @@ public interface AgentDataFacade {
     AgentDto getOrCreateAgent(String name, String description, String goal,
                               String allowedTools, String agentSpec,
                               String createdBy, String tenantId,
-                              List<String> mcpServers);
+                              List<String> mcpServers,
+                              com.agentframework.common.dto.AgentConfigDto config);
 
     /**
      * Update agent configuration.

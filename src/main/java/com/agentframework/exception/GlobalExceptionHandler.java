@@ -1,5 +1,8 @@
 package com.agentframework.exception;
 
+import com.agentframework.dto.ApiErrorResponse;
+import com.agentframework.dto.FieldValidationError;
+import com.agentframework.dto.ValidationErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,40 +12,41 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
+    public ResponseEntity<ValidationErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        List<FieldValidationError> errors = ex.getBindingResult().getAllErrors().stream()
+                .map(error -> new FieldValidationError(
+                        ((FieldError) error).getField(),
+                        error.getDefaultMessage()
+                ))
+                .toList();
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("timestamp", LocalDateTime.now().toString());
-        response.put("status", HttpStatus.BAD_REQUEST.value());
-        response.put("error", "Validation Failed");
-        response.put("details", errors);
+        ValidationErrorResponse response = new ValidationErrorResponse(
+                LocalDateTime.now().toString(),
+                HttpStatus.BAD_REQUEST.value(),
+                "Validation Failed",
+                errors
+        );
 
         return ResponseEntity.badRequest().body(response);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+    public ResponseEntity<ApiErrorResponse> handleGenericException(Exception ex) {
         log.error("Unexpected error occurred", ex);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("timestamp", LocalDateTime.now().toString());
-        response.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
-        response.put("error", "Internal Server Error");
-        response.put("message", ex.getMessage());
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now().toString(),
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Internal Server Error",
+                ex.getMessage()
+        );
 
         return ResponseEntity.internalServerError().body(response);
     }

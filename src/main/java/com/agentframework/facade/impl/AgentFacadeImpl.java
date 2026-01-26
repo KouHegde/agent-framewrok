@@ -5,6 +5,7 @@ import com.agentframework.data.facade.AgentDataFacade;
 import com.agentframework.dto.AgentSpec;
 import com.agentframework.dto.CreateAgentRequest;
 import com.agentframework.facade.AgentFacade;
+import com.agentframework.service.AgentCreationService;
 import com.agentframework.service.MetaAgentService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,103 +23,43 @@ import java.util.UUID;
 public class AgentFacadeImpl implements AgentFacade {
 
     private final MetaAgentService metaAgentService;
+    private final AgentCreationService agentCreationService;
     private final AgentDataFacade agentDataFacade;
     private final ObjectMapper objectMapper;
 
     @Override
-    public AgentCreationResult createAgent(String userId, String name, String description) {
-        log.info("Creating agent: {} for user: {}", name, userId);
-
-        // Build agent spec
-        CreateAgentRequest request = new CreateAgentRequest();
-        request.setName(name);
-        request.setDescription(description);
-
-        AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
-        log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
-
-        // Create sorted allowed_tools key
-        List<String> sortedTools = agentSpec.getAllowedTools().stream().sorted().toList();
-        String allowedToolsKey = String.join(",", sortedTools);
-
-        // Serialize agent spec
-        String agentSpecJson;
-        try {
-            agentSpecJson = objectMapper.writeValueAsString(agentSpec);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize agent spec", e);
-        }
-
-        // Extract MCP server names
-        List<String> mcpServers = agentSpec.getAllowedTools().stream()
-                .map(tool -> {
-                    if (tool.startsWith("mcp_")) {
-                        String[] parts = tool.substring(4).split("_", 2);
-                        return parts[0];
-                    }
-                    return tool;
-                })
-                .distinct()
-                .toList();
-
-        // Get or create agent
-        AgentDto agent = agentDataFacade.getOrCreateAgent(
-                name,
-                description,
-                agentSpec.getGoal(),
-                allowedToolsKey,
-                agentSpecJson,
-                userId,
-                null,  // tenantId
-                mcpServers
-        );
-
-        log.info("Agent created: {}", agent.id());
-        return new AgentCreationResult(agent, agentSpec, null);
+    public AgentCreationResult createAgent(CreateAgentRequest request) {
+        var outcome = agentCreationService.createAgent(request);
+        return new AgentCreationResult(outcome.getResponse(), outcome.isCreated());
     }
 
     @Override
     public AgentDto refreshAgentConfig(UUID agentId) {
         log.info("Refreshing config for agent: {}", agentId);
 
-        AgentDto agent = agentDataFacade.findById(agentId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
-
-        // Re-build spec from description
-        CreateAgentRequest request = new CreateAgentRequest();
-        request.setName(agent.name());
-        request.setDescription(agent.description());
-
-        AgentSpec newSpec = metaAgentService.buildAgentSpec(request);
-
-        String agentSpecJson;
-        try {
-            agentSpecJson = objectMapper.writeValueAsString(newSpec);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize agent spec", e);
-        }
+        AgentDto agent = getAgentOrThrow(agentId);
+        AgentSpec newSpec = metaAgentService.buildAgentSpec(toCreateRequest(agent));
+        String agentSpecJson = serializeAgentSpec(newSpec);
 
         return agentDataFacade.updateAgent(
                 agentId, 
                 agent.description(), 
                 agentSpecJson,
                 newSpec.getExecutionMode(),
-                String.join(",", newSpec.getPermissions())
+                joinPermissions(newSpec.getPermissions())
         );
     }
 
     @Override
     public AgentDto updateAgentConfig(UUID agentId, com.agentframework.common.dto.AgentConfigDto config) {
-        // Update individual config fields
-        AgentDto agent = agentDataFacade.findById(agentId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
-        
+        getAgentOrThrow(agentId);
+
         return agentDataFacade.updateAgent(
                 agentId,
                 null,  // Keep description
                 null,  // Keep agentSpec
                 config.executionMode(),
-                config.permissions() != null ? String.join(",", config.permissions()) : null
+                joinPermissions(config.permissions())
         );
     }
 
@@ -130,7 +71,6 @@ public class AgentFacadeImpl implements AgentFacade {
 
     @Override
     public Optional<AgentDto> findAgent(String userId, String name) {
-        // Find by allowed tools or other criteria
         return agentDataFacade.findByCreatedBy(userId).stream()
                 .filter(a -> a.name().equals(name))
                 .findFirst();
@@ -142,7 +82,37 @@ public class AgentFacadeImpl implements AgentFacade {
     }
 
     @Override
+    public List<AgentDto> listAgents() {
+        return agentDataFacade.findAll();
+    }
+
+    @Override
     public void deleteAgent(UUID agentId) {
         agentDataFacade.deleteAgent(agentId);
     }
+
+    private AgentDto getAgentOrThrow(UUID agentId) {
+        return agentDataFacade.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+    }
+
+    private CreateAgentRequest toCreateRequest(AgentDto agent) {
+        CreateAgentRequest request = new CreateAgentRequest();
+        request.setName(agent.name());
+        request.setDescription(agent.description());
+        return request;
+    }
+
+    private String serializeAgentSpec(Object spec) {
+        try {
+            return objectMapper.writeValueAsString(spec);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize agent spec", e);
+        }
+    }
+
+    private String joinPermissions(List<String> permissions) {
+        return permissions == null ? null : String.join(",", permissions);
+    }
+
 }

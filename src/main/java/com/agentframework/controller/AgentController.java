@@ -1,9 +1,21 @@
 package com.agentframework.controller;
 
+import com.agentframework.common.dto.AgentDto;
+import com.agentframework.dto.AgentCreateResponse;
+import com.agentframework.dto.AgentDeleteResponse;
+import com.agentframework.dto.AgentDetailResponse;
 import com.agentframework.dto.AgentExecutionRequest;
 import com.agentframework.dto.AgentExecutionResponse;
+import com.agentframework.dto.AgentListResponse;
 import com.agentframework.dto.AgentSpec;
+import com.agentframework.dto.AgentSummaryResponse;
 import com.agentframework.dto.CreateAgentRequest;
+import com.agentframework.dto.ErrorResponse;
+import com.agentframework.dto.HealthResponse;
+import com.agentframework.dto.ToolCategoryResponse;
+import com.agentframework.dto.ToolSummaryResponse;
+import com.agentframework.dto.ToolsResponse;
+import com.agentframework.facade.AgentFacade;
 import com.agentframework.service.AgentExecutorService;
 import com.agentframework.service.MetaAgentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +23,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -46,6 +59,10 @@ public class AgentController {
     // Optional - injected if database is configured
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.agentframework.data.facade.AgentDataFacade agentDataFacade;
+
+    // Optional - facade wrapper around data + spec creation
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AgentFacade agentFacade;
 
     /**
      * LEGACY: Create an agent specification from name and description (not persisted).
@@ -153,123 +170,16 @@ public class AgentController {
      * { "agentId": "uuid", "name": "...", "status": "created" or "existing", ... }
      */
     @PostMapping("/agents")
-    public ResponseEntity<Map<String, Object>> createAgent(@RequestBody CreateAgentRequest request) {
+    public ResponseEntity<AgentCreateResponse> createAgent(@RequestBody CreateAgentRequest request) {
         log.info("Creating agent: {}", request.getName());
 
-        // Step 1: Build agent spec from MCP tools
-        log.info("Building agent spec for: {}", request.getName());
-        AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
-        log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
-
-        // Create normalized allowed_tools string for deduplication lookup
-        // Normalize: lowercase, trim, filter empty, distinct, sorted
-        List<String> normalizedTools = agentSpec.getAllowedTools().stream()
-                .map(String::toLowerCase)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .sorted()
-                .toList();
-        String allowedToolsKey = String.join(",", normalizedTools);
-        log.info("Normalized tools key for deduplication: {}", allowedToolsKey);
-
-        // Step 2: Check if agent with SAME TOOLS already exists
-        if (agentDataFacade != null && agentDataFacade.existsByAllowedTools(allowedToolsKey)) {
-            log.info("Agent with same tools already exists. Returning existing agent.");
-            var existingAgent = agentDataFacade.findByAllowedTools(allowedToolsKey);
-            if (existingAgent.isPresent()) {
-                var agentDto = existingAgent.get();
-                String agentId = agentDto.id().toString();
-                Map<String, Object> response = new java.util.HashMap<>();
-                response.put("agentId", agentId);
-                response.put("name", agentDto.name());
-                response.put("description", agentDto.description() != null ? agentDto.description() : "");
-                response.put("status", "existing");
-                response.put("message", "Found existing agent with same capabilities");
-                response.put("allowedTools", normalizedTools);
-                response.put("mcpServers", agentDto.mcpServerNames());
-                response.put("createdAt", agentDto.createdAt().toString());
-                
-                // Include run endpoint for easy execution
-                response.put("runEndpoint", "/api/agents/" + agentId + "/run");
-                response.put("runExample", Map.of(
-                    "method", "POST",
-                    "url", "/api/agents/" + agentId + "/run",
-                    "body", Map.of("query", "Your query here")
-                ));
-                
-                return ResponseEntity.ok(response);
-            }
+        if (agentFacade == null) {
+            throw new IllegalStateException("Agent facade not configured");
         }
 
-        // Step 3: Check if database is available
-        if (agentDataFacade == null) {
-            log.warn("Database not configured. Agent will not be persisted.");
-            return ResponseEntity.ok(Map.of(
-                    "status", "created_temp",
-                    "message", "Database not configured. Agent not persisted.",
-                    "agentSpec", agentSpec
-            ));
-        }
-
-        // Step 4: Save to database
-        try {
-            String agentSpecJson = objectMapper.writeValueAsString(agentSpec);
-            
-            // Extract MCP server names from tool names
-            List<String> mcpServers = agentSpec.getAllowedTools().stream()
-                    .map(tool -> {
-                        // Tool format: mcp_jira_call_jira_rest_api -> jira
-                        if (tool.startsWith("mcp_")) {
-                            String[] parts = tool.substring(4).split("_", 2);
-                            return parts[0];
-                        }
-                        return tool;
-                    })
-                    .distinct()
-                    .toList();
-
-            var agentDto = agentDataFacade.getOrCreateAgent(
-                    request.getName(),
-                    request.getDescription(),
-                    agentSpec.getGoal(),
-                    allowedToolsKey,
-                    agentSpecJson,
-                    request.getOwnerId(),
-                    request.getTenantId(),
-                    mcpServers
-            );
-
-            log.info("Agent created with ID: {}", agentDto.id());
-
-            // Build response
-            String agentId = agentDto.id().toString();
-            Map<String, Object> response = new java.util.HashMap<>();
-            response.put("agentId", agentId);
-            response.put("name", agentDto.name());
-            response.put("description", agentDto.description() != null ? agentDto.description() : "");
-            response.put("status", "created");
-            response.put("allowedTools", normalizedTools);
-            response.put("mcpServers", agentDto.mcpServerNames());
-            response.put("createdAt", agentDto.createdAt().toString());
-            
-            // Include run endpoint for easy execution
-            response.put("runEndpoint", "/api/agents/" + agentId + "/run");
-            response.put("runExample", Map.of(
-                "method", "POST",
-                "url", "/api/agents/" + agentId + "/run",
-                "body", Map.of("query", "Your query here")
-            ));
-
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            log.error("Failed to save agent: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "error", "Failed to save agent",
-                    "message", e.getMessage()
-            ));
-        }
+        var result = agentFacade.createAgent(request);
+        HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(result.response());
     }
 
     /**
@@ -279,24 +189,23 @@ public class AgentController {
      */
     @GetMapping("/agents")
     public ResponseEntity<?> listAgents() {
+        if (agentFacade != null) {
+            var agents = agentFacade.listAgents();
+            List<AgentSummaryResponse> summaries = agents.stream()
+                    .map(this::toSummary)
+                    .toList();
+            return ResponseEntity.ok(new AgentListResponse(summaries.size(), summaries, null));
+        }
+
         if (agentDataFacade == null) {
-            return ResponseEntity.ok(Map.of(
-                    "message", "Database not configured",
-                    "agents", List.of()
-            ));
+            return ResponseEntity.ok(new AgentListResponse(0, List.of(), "Database not configured"));
         }
 
         var agents = agentDataFacade.findAll();
-        return ResponseEntity.ok(Map.of(
-                "total", agents.size(),
-                "agents", agents.stream().map(a -> Map.of(
-                        "agentId", a.id().toString(),
-                        "name", a.name(),
-                        "description", a.description() != null ? a.description() : "",
-                        "mcpServers", a.mcpServerNames(),
-                        "createdAt", a.createdAt().toString()
-                )).toList()
-        ));
+        List<AgentSummaryResponse> summaries = agents.stream()
+                .map(this::toSummary)
+                .toList();
+        return ResponseEntity.ok(new AgentListResponse(summaries.size(), summaries, null));
     }
 
     /**
@@ -306,20 +215,18 @@ public class AgentController {
      */
     @GetMapping("/agents/{id}")
     public ResponseEntity<?> getAgent(@PathVariable("id") UUID agentId) {
+        if (agentFacade != null) {
+            return agentFacade.findAgentById(agentId)
+                    .map(agent -> ResponseEntity.ok(toDetail(agent)))
+                    .orElse(ResponseEntity.notFound().build());
+        }
+
         if (agentDataFacade == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Database not configured"));
+            return ResponseEntity.badRequest().body(new ErrorResponse("Database not configured", null));
         }
 
         return agentDataFacade.findById(agentId)
-                .map(agent -> ResponseEntity.ok(Map.of(
-                        "agentId", agent.id().toString(),
-                        "name", agent.name(),
-                        "description", agent.description() != null ? agent.description() : "",
-                        "agentSpec", agent.agentSpec() != null ? agent.agentSpec() : "",
-                        "mcpServers", agent.mcpServerNames(),
-                        "createdAt", agent.createdAt().toString(),
-                        "updatedAt", agent.updatedAt().toString()
-                )))
+                .map(agent -> ResponseEntity.ok(toDetail(agent)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -334,11 +241,13 @@ public class AgentController {
             @PathVariable("id") UUID agentId,
             @RequestBody(required = false) RunAgentRequest request) {
 
-        if (agentDataFacade == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Database not configured"));
+        if (agentFacade == null && agentDataFacade == null) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Database not configured", null));
         }
 
-        var agentOpt = agentDataFacade.findById(agentId);
+        var agentOpt = agentFacade != null
+                ? agentFacade.findAgentById(agentId)
+                : agentDataFacade.findById(agentId);
         if (agentOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -368,10 +277,9 @@ public class AgentController {
 
         } catch (Exception e) {
             log.error("Failed to run agent: {}", e.getMessage());
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "error", "Failed to run agent",
-                    "message", e.getMessage()
-            ));
+            return ResponseEntity.internalServerError().body(
+                    new ErrorResponse("Failed to run agent", e.getMessage())
+            );
         }
     }
 
@@ -382,16 +290,22 @@ public class AgentController {
      */
     @DeleteMapping("/agents/{id}")
     public ResponseEntity<?> deleteAgent(@PathVariable("id") UUID agentId) {
+        if (agentFacade != null) {
+            try {
+                agentFacade.deleteAgent(agentId);
+                return ResponseEntity.ok(new AgentDeleteResponse("deleted", agentId.toString()));
+            } catch (Exception e) {
+                return ResponseEntity.notFound().build();
+            }
+        }
+
         if (agentDataFacade == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Database not configured"));
+            return ResponseEntity.badRequest().body(new ErrorResponse("Database not configured", null));
         }
 
         try {
             agentDataFacade.deleteAgent(agentId);
-            return ResponseEntity.ok(Map.of(
-                    "status", "deleted",
-                    "agentId", agentId.toString()
-            ));
+            return ResponseEntity.ok(new AgentDeleteResponse("deleted", agentId.toString()));
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }
@@ -414,11 +328,11 @@ public class AgentController {
      * Health check endpoint
      */
     @GetMapping("/health")
-    public ResponseEntity<Map<String, String>> health() {
-        return ResponseEntity.ok(Map.of(
-                "status", "UP",
-                "service", "agent-framework",
-                "database", agentDataFacade != null ? "connected" : "not_configured"
+    public ResponseEntity<HealthResponse> health() {
+        return ResponseEntity.ok(new HealthResponse(
+                "UP",
+                "agent-framework",
+                agentDataFacade != null ? "connected" : "not_configured"
         ));
     }
 
@@ -426,23 +340,45 @@ public class AgentController {
      * Get all available MCP tools
      */
     @GetMapping("/tools")
-    public ResponseEntity<Map<String, Object>> getTools() {
+    public ResponseEntity<ToolsResponse> getTools() {
         var tools = toolRegistry.getAllTools();
         var byCategory = toolRegistry.getToolsByCategories();
-        
-        return ResponseEntity.ok(Map.of(
-                "total", tools.size(),
-                "byCategory", byCategory.entrySet().stream()
-                        .collect(java.util.stream.Collectors.toMap(
-                                Map.Entry::getKey,
-                                e -> e.getValue().stream()
-                                        .map(t -> Map.of(
-                                                "name", t.getName(),
-                                                "description", t.getDescription(),
-                                                "capabilities", t.getCapabilities()
-                                        ))
-                                        .collect(java.util.stream.Collectors.toList())
-                        ))
-        ));
+
+        List<ToolCategoryResponse> categories = byCategory.entrySet().stream()
+                .map(entry -> new ToolCategoryResponse(
+                        entry.getKey(),
+                        entry.getValue().stream()
+                                .map(t -> new ToolSummaryResponse(
+                                        t.getName(),
+                                        t.getDescription(),
+                                        t.getCapabilities()
+                                ))
+                                .toList()
+                ))
+                .toList();
+
+        return ResponseEntity.ok(new ToolsResponse(tools.size(), categories));
+    }
+
+    private AgentSummaryResponse toSummary(AgentDto agent) {
+        return new AgentSummaryResponse(
+                agent.id().toString(),
+                agent.name(),
+                agent.description() != null ? agent.description() : "",
+                agent.mcpServerNames(),
+                agent.createdAt().toString()
+        );
+    }
+
+    private AgentDetailResponse toDetail(AgentDto agent) {
+        return new AgentDetailResponse(
+                agent.id().toString(),
+                agent.name(),
+                agent.description() != null ? agent.description() : "",
+                agent.agentSpec() != null ? agent.agentSpec() : "",
+                agent.mcpServerNames(),
+                agent.createdAt().toString(),
+                agent.updatedAt().toString()
+        );
     }
 }
