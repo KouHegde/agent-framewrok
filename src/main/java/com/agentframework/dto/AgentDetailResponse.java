@@ -19,4 +19,5 @@ public class AgentDetailResponse {
     private String updatedAt;
     private String runEndpoint;
     private AgentRunExample runExample;
+    private DownstreamAgentDetailResponse downstream;
 }

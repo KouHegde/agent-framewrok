@@ -45,4 +45,4 @@ logging:
 
 downstream:
   agent:
-    url: ${DOWNSTREAM_AGENT_URL:http://localhost:8082}
+    url: ${DOWNSTREAM_AGENT_URL:https://4df2612f27c1.ngrok-free.app}

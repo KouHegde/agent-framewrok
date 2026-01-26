@@ -51,6 +51,10 @@ public record AgentDto(
         
         // Status
         String status,
+
+        // Downstream status
+        String downstreamStatus,
+        String downstreamAgentId,
         
         // Timestamps
         OffsetDateTime createdAt,

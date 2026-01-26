@@ -93,6 +93,9 @@ public class Agent {
     @Column(name = "downstream_status")
     private String downstreamStatus;
 
+    @Column(name = "downstream_agent_id")
+    private String downstreamAgentId;
+
     // Timestamps
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -284,6 +287,14 @@ public class Agent {
 
     public void setDownstreamStatus(String downstreamStatus) {
         this.downstreamStatus = downstreamStatus;
+    }
+
+    public String getDownstreamAgentId() {
+        return downstreamAgentId;
+    }
+
+    public void setDownstreamAgentId(String downstreamAgentId) {
+        this.downstreamAgentId = downstreamAgentId;
     }
 
     public OffsetDateTime getCreatedAt() {

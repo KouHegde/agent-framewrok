@@ -25,4 +25,5 @@ public class AgentCreateResponse {
     private Map<String, String> dataFetchStatus;
     private String dataFetchMessage;
     private String downstreamStatus;
+    private String downstreamAgentId;
 }

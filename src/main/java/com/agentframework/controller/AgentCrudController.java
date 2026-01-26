@@ -10,13 +10,17 @@ import com.agentframework.dto.AgentRunExample;
 import com.agentframework.dto.AgentSpec;
 import com.agentframework.dto.AgentSummaryResponse;
 import com.agentframework.dto.CreateAgentRequest;
+import com.agentframework.dto.DownstreamAgentDetailResponse;
+import com.agentframework.dto.DownstreamAgentListResponse;
 import com.agentframework.dto.ErrorResponse;
 import com.agentframework.facade.AgentFacade;
+import com.agentframework.service.DownstreamAgentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,6 +41,7 @@ public class AgentCrudController {
 
     private final AgentFacade agentFacade;
     private final ObjectMapper objectMapper;
+    private final DownstreamAgentService downstreamAgentService;
 
     /**
      * Create a new agent (persisted to database).
@@ -53,10 +58,18 @@ public class AgentCrudController {
      * List all agents.
      */
     @GetMapping
-    public ResponseEntity<AgentListResponse> listAgents() {
+    public ResponseEntity<AgentListResponse> listAgents(
+            @RequestParam(value = "owner_id", required = false) String ownerId,
+            @RequestParam(value = "tenant_id", required = false) String tenantId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "offset", required = false) Integer offset) {
         var agents = agentFacade.listAgents();
+        var downstream = fetchDownstreamList(ownerId, tenantId, status, limit, offset);
+        var downstreamById = indexDownstreamById(downstream);
+
         List<AgentSummaryResponse> summaries = agents.stream()
-                .map(this::toSummary)
+                .map(agent -> toSummary(agent, downstreamById))
                 .toList();
         return ResponseEntity.ok(new AgentListResponse(summaries.size(), summaries, null));
     }
@@ -67,7 +80,7 @@ public class AgentCrudController {
     @GetMapping("/{id}")
     public ResponseEntity<?> getAgent(@PathVariable("id") UUID agentId) {
         return agentFacade.findAgentById(agentId)
-                .map(agent -> ResponseEntity.ok(toDetail(agent)))
+                .map(agent -> ResponseEntity.ok(toDetail(agent, fetchDownstream(agent))))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -107,17 +120,26 @@ public class AgentCrudController {
         }
     }
 
-    private AgentSummaryResponse toSummary(AgentDto agent) {
+    private AgentSummaryResponse toSummary(AgentDto agent,
+                                           Map<String, DownstreamAgentDetailResponse> downstreamById) {
+        DownstreamAgentDetailResponse downstream = null;
+        if (agent.downstreamAgentId() != null) {
+            downstream = downstreamById.get(agent.downstreamAgentId());
+        }
         return new AgentSummaryResponse(
                 agent.id().toString(),
                 agent.name(),
                 agent.description() != null ? agent.description() : "",
                 agent.mcpServerNames(),
-                agent.createdAt().toString()
+                agent.createdAt().toString(),
+                agent.downstreamStatus(),
+                agent.downstreamAgentId(),
+                downstream
         );
     }
 
-    private AgentDetailResponse toDetail(AgentDto agent) {
+    private AgentDetailResponse toDetail(AgentDto agent,
+                                         DownstreamAgentDetailResponse downstream) {
         String agentId = agent.id().toString();
         String runEndpoint = "/api/agents/" + agentId + "/run";
 
@@ -130,8 +152,48 @@ public class AgentCrudController {
                 agent.createdAt().toString(),
                 agent.updatedAt().toString(),
                 runEndpoint,
-                new AgentRunExample("POST", runEndpoint, Map.of("query", "Your query here"))
+                new AgentRunExample("POST", runEndpoint, Map.of("query", "Your query here")),
+                downstream
         );
+    }
+
+    private DownstreamAgentDetailResponse fetchDownstream(AgentDto agent) {
+        if (agent.downstreamAgentId() == null) {
+            return null;
+        }
+        try {
+            return downstreamAgentService.getAgent(agent.downstreamAgentId());
+        } catch (Exception e) {
+            log.warn("Failed to fetch downstream agent {}: {}", agent.downstreamAgentId(), e.getMessage());
+            return null;
+        }
+    }
+
+    private DownstreamAgentListResponse fetchDownstreamList(String ownerId,
+                                                            String tenantId,
+                                                            String status,
+                                                            Integer limit,
+                                                            Integer offset) {
+        try {
+            Integer resolvedLimit = limit != null ? limit : 10;
+            Integer resolvedOffset = offset != null ? offset : 0;
+            return downstreamAgentService.listAgents(ownerId, tenantId, status, resolvedLimit, resolvedOffset);
+        } catch (Exception e) {
+            log.warn("Failed to fetch downstream agent list: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Map<String, DownstreamAgentDetailResponse> indexDownstreamById(DownstreamAgentListResponse response) {
+        if (response == null || response.getAgents() == null) {
+            return Map.of();
+        }
+        return response.getAgents().stream()
+                .filter(agent -> agent.getId() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        DownstreamAgentDetailResponse::getId,
+                        agent -> agent
+                ));
     }
 
     private AgentSpec parseAgentSpec(String agentSpecJson) {

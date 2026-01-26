@@ -45,7 +45,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                  String createdBy, String tenantId,
                                  List<String> mcpServers,
                                  AgentConfigDto config,
-                                 String downstreamStatus) {
+                                 String downstreamStatus,
+                                 String downstreamAgentId) {
         
         Agent agent = new Agent(name, description, allowedTools);
         agent.setGoal(goal);
@@ -54,6 +55,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         agent.setTenantId(tenantId);
         applyConfig(agent, config);
         agent.setDownstreamStatus(downstreamStatus);
+        agent.setDownstreamAgentId(downstreamAgentId);
         agent.setDownstreamStatus(downstreamStatus);
         
         // Add MCP servers
@@ -74,7 +76,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                       String createdBy, String tenantId,
                                       List<String> mcpServers,
                                       AgentConfigDto config,
-                                      String downstreamStatus) {
+                                      String downstreamStatus,
+                                      String downstreamAgentId) {
         
         // Check if agent with same tools already exists
         Optional<Agent> existing = agentRepository.findByAllowedTools(allowedTools);
@@ -85,7 +88,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
         // Create new agent
         return createAgent(name, description, goal, allowedTools, agentSpec,
-                          createdBy, tenantId, mcpServers, config, downstreamStatus);
+                          createdBy, tenantId, mcpServers, config, downstreamStatus, downstreamAgentId);
     }
 
     @Override
@@ -198,6 +201,8 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                 agent.getMaxSteps(),
                 agent.getBrainAgentId(),
                 agent.getStatus(),
+                agent.getDownstreamStatus(),
+                agent.getDownstreamAgentId(),
                 agent.getCreatedAt(),
                 agent.getUpdatedAt()
         );

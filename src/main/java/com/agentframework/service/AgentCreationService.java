@@ -40,7 +40,8 @@ public class AgentCreationService {
     private AgentDataFacade agentDataFacade;
 
     public AgentCreationOutcome createAgent(CreateAgentRequest request) {
-        String ownerId = request.getOwnerId();
+        String ownerId = resolveOwnerId(request);
+        String tenantId = resolveTenantId(request);
         log.info("Creating agent: {} for user: {}", request.getName(), ownerId);
 
         AgentSpec agentSpec = buildAgentSpec(request);
@@ -57,13 +58,15 @@ public class AgentCreationService {
         DecisionFetchResult fetchResult = fetchDecisionData(agentSpec.getAllowedTools());
         AgentConfigDto config = decideConfig(agentSpec, request, fetchResult.data());
         applyConfigToSpec(agentSpec, config);
-        DownstreamAgentCreateResponse downstream = createDownstreamAgent(request, agentSpec, config);
-        String downstreamStatus = downstream.getStatus() != null ? downstream.getStatus() : "created";
+        DownstreamAgentCreateResponse downstream = createDownstreamAgent(request, agentSpec, config, ownerId, tenantId);
+        String downstreamStatus = downstream.getStatus() != null ? downstream.getStatus() : "unknown";
+        String downstreamAgentId = downstream.getAgentId();
 
-        AgentDto agent = persistNewAgent(request, agentSpec, allowedToolsKey, ownerId, config, downstreamStatus);
+        AgentDto agent = persistNewAgent(request, agentSpec, allowedToolsKey, ownerId, config,
+                downstreamStatus, downstreamAgentId);
         log.info("Agent created: {}", agent.id());
         AgentCreateResponse response = buildFullResponse(agent, agentSpec, normalizedTools,
-                fetchResult.status(), fetchResult.message(), downstreamStatus);
+                fetchResult.status(), fetchResult.message(), downstreamStatus, downstreamAgentId);
         return new AgentCreationOutcome(response, true);
     }
 
@@ -117,7 +120,8 @@ public class AgentCreationService {
                                      String allowedToolsKey,
                                      String ownerId,
                                      AgentConfigDto config,
-                                     String downstreamStatus) {
+                                     String downstreamStatus,
+                                     String downstreamAgentId) {
         String agentSpecJson = serializeAgentSpec(agentSpec);
         List<String> mcpServers = extractMcpServers(agentSpec.getAllowedTools());
 
@@ -131,7 +135,8 @@ public class AgentCreationService {
                 request.getTenantId(),
                 mcpServers,
                 config,
-                downstreamStatus
+                downstreamStatus,
+                downstreamAgentId
         );
     }
 
@@ -230,7 +235,8 @@ public class AgentCreationService {
                 null,
                 status,
                 fetchMessage,
-                null
+                agent.downstreamStatus(),
+                agent.downstreamAgentId()
         );
     }
 
@@ -239,7 +245,8 @@ public class AgentCreationService {
                                                   List<String> normalizedTools,
                                                   Map<String, String> status,
                                                   String fetchMessage,
-                                                  String downstreamStatus) {
+                                                  String downstreamStatus,
+                                                  String downstreamAgentId) {
         String agentId = agent.id().toString();
         String runEndpoint = "/api/agents/" + agentId + "/run";
 
@@ -257,19 +264,22 @@ public class AgentCreationService {
                 agentSpec,
                 status,
                 fetchMessage,
-                downstreamStatus
+                downstreamStatus,
+                downstreamAgentId
         );
     }
 
     private DownstreamAgentCreateResponse createDownstreamAgent(CreateAgentRequest request,
                                                                 AgentSpec agentSpec,
-                                                                AgentConfigDto config) {
+                                                                AgentConfigDto config,
+                                                                String ownerId,
+                                                                String tenantId) {
         DownstreamAgentCreateRequest payload = new DownstreamAgentCreateRequest(
                 request.getName(),
                 agentSpec.getGoal(),
                 request.getDescription(),
-                request.getOwnerId(),
-                request.getTenantId(),
+                ownerId,
+                tenantId,
                 agentSpec.getGoal(),
                 buildDownstreamTools(agentSpec.getAllowedTools()),
                 buildDownstreamPolicies(agentSpec.getAllowedTools()),
@@ -351,6 +361,20 @@ public class AgentCreationService {
             }
         }
         return name;
+    }
+
+    private String resolveOwnerId(CreateAgentRequest request) {
+        String ownerId = request.getOwnerId();
+        return (ownerId == null || ownerId.isBlank())
+                ? java.util.UUID.randomUUID().toString()
+                : ownerId;
+    }
+
+    private String resolveTenantId(CreateAgentRequest request) {
+        String tenantId = request.getTenantId();
+        return (tenantId == null || tenantId.isBlank())
+                ? java.util.UUID.randomUUID().toString()
+                : tenantId;
     }
 
     private String deriveStatus(Map<String, Object> sample) {

@@ -15,4 +15,7 @@ public class AgentSummaryResponse {
     private String description;
     private List<String> mcpServers;
     private String createdAt;
+    private String downstreamStatus;
+    private String downstreamAgentId;
+    private DownstreamAgentDetailResponse downstream;
 }

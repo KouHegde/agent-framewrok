@@ -2,6 +2,8 @@ package com.agentframework.service;
 
 import com.agentframework.dto.DownstreamAgentCreateRequest;
 import com.agentframework.dto.DownstreamAgentCreateResponse;
+import com.agentframework.dto.DownstreamAgentDetailResponse;
+import com.agentframework.dto.DownstreamAgentListResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Slf4j
 @Service
@@ -45,6 +48,64 @@ public class DownstreamAgentService {
             return parsed;
         } catch (Exception e) {
             throw new IllegalStateException("Downstream agent creation failed: " + e.getMessage(), e);
+        }
+    }
+
+    public DownstreamAgentDetailResponse getAgent(String agentId) {
+        WebClient client = WebClient.builder()
+                .baseUrl(downstreamAgentUrl)
+                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .build();
+
+        try {
+            String response = client.get()
+                    .uri("/agents/" + agentId)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            if (response == null || response.isBlank()) {
+                throw new IllegalStateException("Downstream returned empty response");
+            }
+
+            return objectMapper.readValue(response, DownstreamAgentDetailResponse.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Downstream agent fetch failed: " + e.getMessage(), e);
+        }
+    }
+
+    public DownstreamAgentListResponse listAgents(String ownerId,
+                                                  String tenantId,
+                                                  String status,
+                                                  Integer limit,
+                                                  Integer offset) {
+        WebClient client = WebClient.builder()
+                .baseUrl(downstreamAgentUrl)
+                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .build();
+
+        try {
+            String uri = UriComponentsBuilder.fromPath("/agents")
+                    .queryParamIfPresent("owner_id", java.util.Optional.ofNullable(ownerId))
+                    .queryParamIfPresent("tenant_id", java.util.Optional.ofNullable(tenantId))
+                    .queryParamIfPresent("status", java.util.Optional.ofNullable(status))
+                    .queryParamIfPresent("limit", java.util.Optional.ofNullable(limit))
+                    .queryParamIfPresent("offset", java.util.Optional.ofNullable(offset))
+                    .toUriString();
+
+            String response = client.get()
+                    .uri(uri)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            if (response == null || response.isBlank()) {
+                throw new IllegalStateException("Downstream returned empty response");
+            }
+
+            return objectMapper.readValue(response, DownstreamAgentListResponse.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Downstream agent list failed: " + e.getMessage(), e);
         }
     }
 }
