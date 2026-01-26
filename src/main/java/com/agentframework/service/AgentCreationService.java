@@ -35,6 +35,7 @@ public class AgentCreationService {
     private final MCPDataFetcherService mcpDataFetcherService;
     private final ConfigDeciderService configDeciderService;
     private final DownstreamAgentService downstreamAgentService;
+    private final LLMService llmService;
     private final ObjectMapper objectMapper;
 
     @Autowired(required = false)
@@ -283,6 +284,14 @@ public class AgentCreationService {
                                                                 AgentConfigDto config,
                                                                 String ownerId,
                                                                 String tenantId) {
+        // Generate system prompt using LLM based on description
+        String systemPrompt = llmService.generateSystemPrompt(
+                request.getName(),
+                request.getDescription(),
+                agentSpec.getAllowedTools()
+        );
+        log.info("Generated system prompt for agent '{}': {} chars", request.getName(), systemPrompt.length());
+
         DownstreamAgentCreateRequest payload = new DownstreamAgentCreateRequest();
         payload.setAgentId(agentId.toString());  // Pass Java's agentId to Python
         payload.setName(request.getName());
@@ -290,7 +299,7 @@ public class AgentCreationService {
         payload.setDescription(request.getDescription());
         payload.setOwnerId(ownerId);
         payload.setTenantId(tenantId);
-        payload.setSystemPrompt(agentSpec.getGoal());
+        payload.setSystemPrompt(systemPrompt);  // Use LLM-generated system prompt
         payload.setTools(buildDownstreamTools(agentSpec.getAllowedTools()));
         payload.setPolicies(buildDownstreamPolicies(agentSpec.getAllowedTools()));
         payload.setMaxSteps(6);

@@ -454,6 +454,190 @@ public class LLMService {
     }
 
     /**
+     * Generate a system prompt for an agent based on its name, description, and tools.
+     * Uses LLM to create a comprehensive, well-structured system prompt.
+     *
+     * @param name Agent name
+     * @param description Agent description (user's intent)
+     * @param tools List of tool names the agent can use
+     * @return Generated system prompt, or a fallback if LLM fails
+     */
+    public String generateSystemPrompt(String name, String description, List<String> tools) {
+        if (!isEnabled()) {
+            log.info("LLM disabled, using fallback system prompt");
+            return buildFallbackSystemPrompt(name, description, tools);
+        }
+
+        try {
+            String prompt = buildSystemPromptGenerationPrompt(name, description, tools);
+            log.info("Generating system prompt for agent: {}", name);
+            log.debug("System prompt generation request:\n{}", prompt);
+
+            String response = callLLM(prompt);
+            String systemPrompt = extractSystemPrompt(response);
+
+            if (systemPrompt == null || systemPrompt.isBlank()) {
+                log.warn("LLM returned empty system prompt, using fallback");
+                return buildFallbackSystemPrompt(name, description, tools);
+            }
+
+            log.info("Generated system prompt for agent '{}' ({} chars)", name, systemPrompt.length());
+            log.debug("Generated system prompt:\n{}", systemPrompt);
+            return systemPrompt;
+
+        } catch (Exception e) {
+            log.error("Failed to generate system prompt: {}", e.getMessage());
+            return buildFallbackSystemPrompt(name, description, tools);
+        }
+    }
+
+    private String buildSystemPromptGenerationPrompt(String name, String description, List<String> tools) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("You are an expert at writing system prompts for AI agents.\n\n");
+        prompt.append("Create a comprehensive, well-structured system prompt for an AI agent.\n\n");
+        prompt.append("Agent Name: ").append(name).append("\n");
+        prompt.append("Agent Description/Purpose: ").append(description).append("\n\n");
+
+        if (tools != null && !tools.isEmpty()) {
+            prompt.append("Available Tools:\n");
+            for (String tool : tools) {
+                prompt.append("- ").append(tool).append("\n");
+            }
+            prompt.append("\n");
+        }
+
+        prompt.append("=== REQUIRED STRUCTURE ===\n");
+        prompt.append("The system prompt MUST include these sections:\n\n");
+
+        prompt.append("1. OPENING LINE: Start with 'You are a helpful [domain] assistant that helps users [main purpose].'\n\n");
+
+        prompt.append("2. CORE RESPONSIBILITIES: List 4-6 bullet points of what the agent can do based on the tools.\n\n");
+
+        prompt.append("3. DATA HANDLING RULES - CRITICAL:\n");
+        prompt.append("   - Rules about handling list data from tools\n");
+        prompt.append("   - NEVER repeat items in responses\n");
+        prompt.append("   - Deduplicate by unique identifiers\n");
+        prompt.append("   - Count only unique items accurately\n\n");
+
+        prompt.append("4. RESPONSE FORMAT:\n");
+        prompt.append("   - Use clear numbered lists for multiple items\n");
+        prompt.append("   - Include relevant details\n");
+        prompt.append("   - Be concise but informative\n\n");
+
+        prompt.append("5. ERROR HANDLING:\n");
+        prompt.append("   - What to do if a tool fails\n");
+        prompt.append("   - What to do if information is missing\n");
+        prompt.append("   - Ask for clarification when needed\n\n");
+
+        prompt.append("6. CLOSING REMINDER: End with a principle like 'Accuracy over quantity.'\n\n");
+
+        prompt.append("=== RULES ===\n");
+        prompt.append("- Be specific to the domain (");
+        prompt.append(extractDomain(description, tools));
+        prompt.append(")\n");
+        prompt.append("- Reference the actual tools by their capabilities, not their technical names\n");
+        prompt.append("- Keep it professional and actionable\n");
+        prompt.append("- 200-400 words total\n\n");
+
+        prompt.append("Respond with ONLY the system prompt text. No JSON, no explanations, no markdown code blocks.");
+
+        return prompt.toString();
+    }
+
+    private String extractDomain(String description, List<String> tools) {
+        if (description != null) {
+            String desc = description.toLowerCase();
+            if (desc.contains("webex")) return "Webex/messaging";
+            if (desc.contains("jira")) return "Jira/project management";
+            if (desc.contains("github")) return "GitHub/code repository";
+            if (desc.contains("confluence")) return "Confluence/documentation";
+            if (desc.contains("slack")) return "Slack/messaging";
+        }
+        if (tools != null && !tools.isEmpty()) {
+            String toolStr = String.join(" ", tools).toLowerCase();
+            if (toolStr.contains("webex")) return "Webex/messaging";
+            if (toolStr.contains("jira")) return "Jira/project management";
+            if (toolStr.contains("github")) return "GitHub/code repository";
+            if (toolStr.contains("confluence")) return "Confluence/documentation";
+        }
+        return "the specified domain";
+    }
+
+    private String extractSystemPrompt(String response) {
+        if (response == null) {
+            return null;
+        }
+        // Remove any markdown code blocks if present
+        String cleaned = response.trim();
+        if (cleaned.startsWith("```")) {
+            int endIndex = cleaned.lastIndexOf("```");
+            if (endIndex > 3) {
+                cleaned = cleaned.substring(cleaned.indexOf("\n") + 1, endIndex).trim();
+            }
+        }
+        return cleaned;
+    }
+
+    private String buildFallbackSystemPrompt(String name, String description, List<String> tools) {
+        StringBuilder sb = new StringBuilder();
+        String domain = extractDomain(description, tools);
+
+        sb.append("You are a helpful ").append(domain).append(" assistant that helps users ");
+        sb.append(description != null ? description.toLowerCase() : "with their tasks").append(".\n\n");
+
+        sb.append("CORE RESPONSIBILITIES:\n");
+        if (tools != null && !tools.isEmpty()) {
+            for (String tool : tools) {
+                sb.append("- Use ").append(simplifyToolNameForPrompt(tool)).append(" when needed\n");
+            }
+        } else {
+            sb.append("- Help users accomplish their goals\n");
+            sb.append("- Provide accurate, concise information\n");
+        }
+        sb.append("\n");
+
+        sb.append("DATA HANDLING RULES - CRITICAL:\n");
+        sb.append("1. When you receive list data from tools, the data is already complete and accurate\n");
+        sb.append("2. NEVER repeat the same item multiple times in your response\n");
+        sb.append("3. Each item should appear exactly ONCE in your lists\n");
+        sb.append("4. Deduplicate by unique identifiers\n");
+        sb.append("5. Count only unique items accurately\n\n");
+
+        sb.append("RESPONSE FORMAT:\n");
+        sb.append("- Use clear numbered lists for multiple items\n");
+        sb.append("- Include relevant details\n");
+        sb.append("- Be concise but informative\n");
+        sb.append("- If data is limited, acknowledge it honestly\n\n");
+
+        sb.append("ERROR HANDLING:\n");
+        sb.append("- If a tool fails, explain clearly what went wrong\n");
+        sb.append("- If information is missing, ask the user for clarification\n");
+        sb.append("- If you cannot find something, say so directly\n\n");
+
+        sb.append("Remember: Accuracy over quantity. One correct, unique list is better than a long list with duplicates.");
+
+        return sb.toString();
+    }
+
+    private String simplifyToolNameForPrompt(String toolName) {
+        // Convert tool names like "mcp_webex_list_spaces" to readable form
+        String name = toolName;
+        if (name.startsWith("mcp_")) {
+            name = name.substring(4);
+        }
+        // Remove server prefix (e.g., "webex_list_spaces" -> "list_spaces")
+        int underscoreIdx = name.indexOf('_');
+        if (underscoreIdx > 0) {
+            String possibleServer = name.substring(0, underscoreIdx);
+            if (possibleServer.length() <= 10) { // likely a server prefix
+                name = name.substring(underscoreIdx + 1);
+            }
+        }
+        // Convert underscores to spaces
+        return name.replace('_', ' ');
+    }
+
+    /**
      * Result from LLM analysis
      */
     @lombok.Data
