@@ -419,4 +419,109 @@ public class MCPToolRegistry {
 
         return configTools;
     }
+
+    // ==================== Tool Management Methods ====================
+
+    /**
+     * Check if a tool exists.
+     */
+    public boolean exists(String name) {
+        return tools.containsKey(name);
+    }
+
+    /**
+     * Add a new tool to the registry and optionally persist to database.
+     */
+    public MCPTool addTool(MCPTool tool) {
+        if (tool == null || tool.getName() == null || tool.getName().isBlank()) {
+            throw new IllegalArgumentException("Tool name is required");
+        }
+
+        tools.put(tool.getName(), tool);
+        log.info("Added tool to registry: {}", tool.getName());
+
+        // Persist to database if available
+        if (mcpToolRepository != null) {
+            try {
+                McpToolEntity entity = toEntity(tool);
+                mcpToolRepository.save(entity);
+                log.info("Persisted tool to database: {}", tool.getName());
+            } catch (Exception e) {
+                log.warn("Failed to persist tool to database: {}", e.getMessage());
+            }
+        }
+
+        return tool;
+    }
+
+    /**
+     * Delete a tool from the registry and database.
+     */
+    public boolean deleteTool(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+
+        MCPTool removed = tools.remove(name);
+        if (removed == null) {
+            log.warn("Tool not found in registry: {}", name);
+            return false;
+        }
+
+        log.info("Removed tool from registry: {}", name);
+
+        // Delete from database if available
+        if (mcpToolRepository != null) {
+            try {
+                mcpToolRepository.findByName(name).ifPresent(entity -> {
+                    mcpToolRepository.delete(entity);
+                    log.info("Deleted tool from database: {}", name);
+                });
+            } catch (Exception e) {
+                log.warn("Failed to delete tool from database: {}", e.getMessage());
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Update an existing tool.
+     */
+    public MCPTool updateTool(String name, MCPTool updatedTool) {
+        if (name == null || name.isBlank() || updatedTool == null) {
+            throw new IllegalArgumentException("Tool name and updated tool are required");
+        }
+
+        if (!tools.containsKey(name)) {
+            throw new IllegalArgumentException("Tool not found: " + name);
+        }
+
+        // If name is being changed, remove old entry
+        if (!name.equals(updatedTool.getName())) {
+            tools.remove(name);
+        }
+
+        tools.put(updatedTool.getName(), updatedTool);
+        log.info("Updated tool in registry: {} -> {}", name, updatedTool.getName());
+
+        // Update in database if available
+        if (mcpToolRepository != null) {
+            try {
+                mcpToolRepository.findByName(name).ifPresent(entity -> {
+                    entity.setName(updatedTool.getName());
+                    entity.setDescription(updatedTool.getDescription());
+                    entity.setCategory(updatedTool.getCategory());
+                    entity.setCapabilities(updatedTool.getCapabilities());
+                    entity.setRequiredInputs(updatedTool.getRequiredInputs());
+                    mcpToolRepository.save(entity);
+                    log.info("Updated tool in database: {}", updatedTool.getName());
+                });
+            } catch (Exception e) {
+                log.warn("Failed to update tool in database: {}", e.getMessage());
+            }
+        }
+
+        return updatedTool;
+    }
 }
