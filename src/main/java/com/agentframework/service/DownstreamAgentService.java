@@ -151,6 +151,8 @@ public class DownstreamAgentService {
                 throw new IllegalStateException("Downstream returned empty response");
             }
 
+            log.info("Downstream response body: {}", response);
+
             DownstreamAgentRunResponse parsed = objectMapper.readValue(response, DownstreamAgentRunResponse.class);
             log.info("Downstream agent run completed. Status: {}", parsed.getStatus());
             return parsed;
