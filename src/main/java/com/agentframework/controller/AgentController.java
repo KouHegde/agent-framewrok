@@ -1,21 +1,7 @@
 package com.agentframework.controller;
 
 import com.agentframework.common.dto.AgentDto;
-import com.agentframework.dto.AgentConfigResponse;
-import com.agentframework.dto.AgentCreateResponse;
-import com.agentframework.dto.AgentDeleteResponse;
-import com.agentframework.dto.AgentDetailResponse;
-import com.agentframework.dto.AgentExecutionRequest;
-import com.agentframework.dto.AgentExecutionResponse;
-import com.agentframework.dto.AgentListResponse;
-import com.agentframework.dto.AgentSpec;
-import com.agentframework.dto.AgentSummaryResponse;
-import com.agentframework.dto.CreateAgentRequest;
-import com.agentframework.dto.ErrorResponse;
-import com.agentframework.dto.HealthResponse;
-import com.agentframework.dto.ToolCategoryResponse;
-import com.agentframework.dto.ToolSummaryResponse;
-import com.agentframework.dto.ToolsResponse;
+import com.agentframework.dto.*;
 import com.agentframework.facade.AgentFacade;
 import com.agentframework.service.AgentExecutorService;
 import com.agentframework.service.MetaAgentService;
@@ -400,15 +386,32 @@ public class AgentController {
     }
 
     private AgentDetailResponse toDetail(AgentDto agent) {
+        String agentId = agent.id().toString();
+        String runEndpoint = "/api/agents/" + agentId + "/run";
+
         return new AgentDetailResponse(
-                agent.id().toString(),
+                agentId,
                 agent.name(),
                 agent.description() != null ? agent.description() : "",
-                agent.agentSpec() != null ? agent.agentSpec() : "",
+                parseAgentSpec(agent.agentSpec()),
                 agent.mcpServerNames(),
                 agent.createdAt().toString(),
-                agent.updatedAt().toString()
+                agent.updatedAt().toString(),
+                runEndpoint,
+                new AgentRunExample("POST", runEndpoint, Map.of("query", "Your query here"))
         );
+    }
+
+    private AgentSpec parseAgentSpec(String agentSpecJson) {
+        if (agentSpecJson == null || agentSpecJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(agentSpecJson, AgentSpec.class);
+        } catch (Exception e) {
+            log.warn("Failed to parse agentSpec JSON for response: {}", e.getMessage());
+            return null;
+        }
     }
 
     private List<String> splitCsv(String value) {

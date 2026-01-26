@@ -13,8 +13,10 @@ public class AgentDetailResponse {
     private String agentId;
     private String name;
     private String description;
-    private String agentSpec;
+    private AgentSpec agentSpec;
     private List<String> mcpServers;
     private String createdAt;
     private String updatedAt;
+    private String runEndpoint;
+    private AgentRunExample runExample;
 }
