@@ -4,13 +4,22 @@ import com.agentframework.data.entity.Agent;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface AgentRepository extends JpaRepository<Agent, UUID> {
 
-    Optional<Agent> findByUserIdAndBotId(String userId, String botId);
+    Optional<Agent> findByName(String name);
 
-    boolean existsByUserIdAndBotId(String userId, String botId);
+    Optional<Agent> findByNameAndUserId(String name, String userId);
+
+    boolean existsByName(String name);
+
+    boolean existsByNameAndUserId(String name, String userId);
+
+    List<Agent> findByUserId(String userId);
+
+    List<Agent> findAllByOrderByCreatedAtDesc();
 }

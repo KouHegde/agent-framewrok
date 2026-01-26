@@ -2,12 +2,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS agents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    bot_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    agent_spec TEXT,  -- JSON string of AgentSpec
+    user_id TEXT,
     user_config TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT agents_user_bot_unique UNIQUE (user_id, bot_id)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS agent_mcp_servers (
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS agent_mcp_servers (
     CONSTRAINT agent_mcp_server_unique UNIQUE (agent_id, server_name)
 );
 
+CREATE INDEX IF NOT EXISTS idx_agents_name ON agents(name);
 CREATE INDEX IF NOT EXISTS idx_agents_user_id ON agents(user_id);
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_agent_id ON agent_mcp_servers(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_server_name ON agent_mcp_servers(server_name);
