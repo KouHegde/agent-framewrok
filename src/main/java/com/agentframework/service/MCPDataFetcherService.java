@@ -14,6 +14,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import jakarta.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -87,12 +88,28 @@ public class MCPDataFetcherService {
         log.debug("Fetching sample data from {} using {}", category, toolName);
 
         try {
+            if (!isClientConfigured(category)) {
+                log.warn("MCP client not configured for: {}", category);
+                return Map.of("error", "mcp_client_not_configured", "category", category);
+            }
             Map<String, Object> arguments = buildSampleArguments(category);
             return callMcp(category, extractToolName(toolName), arguments);
         } catch (Exception e) {
             log.warn("Failed to fetch sample data from {}: {}", category, e.getMessage());
-            return null;
+            return Map.of("error", "mcp_sample_fetch_failed", "category", category, "message", e.getMessage());
         }
+    }
+
+    /**
+     * Fetch and summarize MCP data for config decision.
+     * Returns a small, structured snapshot to reduce memory usage.
+     */
+    public Map<String, Object> fetchDecisionData(String category, String toolName) {
+        Object data = fetchSampleData(category, toolName);
+        if (data == null) {
+            return Map.of("error", "mcp_sample_unavailable", "category", category);
+        }
+        return summarizeForDecision(data);
     }
 
     /**
@@ -171,6 +188,71 @@ public class MCPDataFetcherService {
         return responseNode.has("result") ? responseNode.get("result") : responseNode;
     }
 
+    private Map<String, Object> summarizeForDecision(Object data) {
+        Map<String, Object> summary = new HashMap<>();
+        if (data == null) {
+            return summary;
+        }
+
+        try {
+            JsonNode node = (data instanceof JsonNode) ? (JsonNode) data : objectMapper.valueToTree(data);
+            JsonNode slim = slimNode(node, 0, 2, 10, 200);
+            long sizeBytes = objectMapper.writeValueAsString(slim).getBytes().length;
+            summary.put("sample", slim);
+            summary.put("sizeBytes", sizeBytes);
+            summary.put("type", node.getNodeType().name());
+            return summary;
+        } catch (Exception e) {
+            log.warn("Failed to summarize MCP data: {}", e.getMessage());
+            return summary;
+        }
+    }
+
+    private JsonNode slimNode(JsonNode node,
+                              int depth,
+                              int maxDepth,
+                              int maxItems,
+                              int maxStringLen) {
+        if (node == null || depth > maxDepth) {
+            return objectMapper.nullNode();
+        }
+
+        if (node.isObject()) {
+            var obj = objectMapper.createObjectNode();
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            int count = 0;
+            while (fields.hasNext() && count < maxItems) {
+                Map.Entry<String, JsonNode> entry = fields.next();
+                obj.set(entry.getKey(), slimNode(entry.getValue(), depth + 1, maxDepth, maxItems, maxStringLen));
+                count++;
+            }
+            return obj;
+        }
+
+        if (node.isArray()) {
+            var arr = objectMapper.createArrayNode();
+            int count = 0;
+            for (JsonNode item : node) {
+                if (count >= maxItems) {
+                    break;
+                }
+                arr.add(slimNode(item, depth + 1, maxDepth, maxItems, maxStringLen));
+                count++;
+            }
+            return arr;
+        }
+
+        if (node.isTextual()) {
+            String text = node.asText();
+            if (text.length() > maxStringLen) {
+                return objectMapper.getNodeFactory().textNode(text.substring(0, maxStringLen));
+            }
+            return node;
+        }
+
+        return node;
+    }
+
     private String parseSseResponse(String response) {
         String[] lines = response.split("\n");
         for (String line : lines) {
@@ -188,6 +270,10 @@ public class MCPDataFetcherService {
             case "github" -> githubClient;
             default -> null;
         };
+    }
+
+    private boolean isClientConfigured(String category) {
+        return getClient(category) != null;
     }
 
     private Map<String, Object> buildSampleArguments(String category) {

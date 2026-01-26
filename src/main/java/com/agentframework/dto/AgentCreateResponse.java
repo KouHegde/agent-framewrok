@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -21,4 +22,6 @@ public class AgentCreateResponse {
     private String runEndpoint;
     private AgentRunExample runExample;
     private AgentSpec agentSpec;
+    private Map<String, String> dataFetchStatus;
+    private String dataFetchMessage;
 }
