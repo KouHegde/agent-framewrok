@@ -64,16 +64,14 @@ public class AgentCreationService {
         AgentConfigDto config = decideConfig(agentSpec, request, fetchResult.data());
         applyConfigToSpec(agentSpec, config);
         
-        // Pass Java's agentId to Python service
+        // Call Python service to create downstream agent (Python uses the same agentId we send)
         DownstreamAgentCreateResponse downstream = createDownstreamAgent(agentId, request, agentSpec, config, ownerId, tenantId);
         String downstreamStatus = downstream.getStatus() != null ? downstream.getStatus() : "unknown";
 
-        // Use the SAME agentId for database persistence
-        AgentDto agent = persistNewAgent(agentId, request, agentSpec, allowedToolsKey, ownerId, config,
-                downstreamStatus);
-        log.info("Agent created: {}", agent.id());
+        // Same agentId is used everywhere (Java DB primary key + Python + run operations)
+        AgentDto agent = persistNewAgent(agentId, request, agentSpec, allowedToolsKey, ownerId, config, downstreamStatus);
+        log.info("Agent created with ID: {}", agent.id());
         
-        // agentId is the SAME for both Java and Python (no separate downstreamAgentId)
         AgentCreateResponse response = buildFullResponse(agent, agentSpec, normalizedTools,
                 fetchResult.status(), fetchResult.message(), downstreamStatus, agentId.toString());
         return new AgentCreationOutcome(response, true);
@@ -134,8 +132,9 @@ public class AgentCreationService {
         String agentSpecJson = serializeAgentSpec(agentSpec);
         List<String> mcpServers = extractMcpServers(agentSpec.getAllowedTools());
 
+        // Same agentId is used for both Java DB and Python (no separate pythonAgentId needed)
         return agentDataFacade.createAgentWithId(
-                agentId,  // Use pre-generated ID
+                agentId,
                 request.getName(),
                 request.getDescription(),
                 agentSpec.getGoal(),
