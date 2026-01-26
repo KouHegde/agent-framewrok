@@ -94,7 +94,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
 
     @Override
     @Transactional
-    public AgentDto createAgentWithId(UUID agentId, String pythonAgentId,
+    public AgentDto createAgentWithId(UUID agentId,
                                        String name, String description, String goal,
                                        String allowedTools, String agentSpec,
                                        String createdBy, String tenantId,
@@ -103,14 +103,14 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
                                        String downstreamStatus) {
         
         Agent agent = new Agent(name, description, allowedTools);
-        agent.setId(agentId);  // Java's ID as primary key
+        agent.setId(agentId);  // Same ID for Java DB and Python
         agent.setGoal(goal);
         agent.setAgentSpec(agentSpec);
         agent.setCreatedBy(createdBy);
         agent.setTenantId(tenantId);
         applyConfig(agent, config);
         agent.setDownstreamStatus(downstreamStatus);
-        agent.setDownstreamAgentId(pythonAgentId);  // Python's ID for run operations
+        agent.setDownstreamAgentId(agentId.toString());  // Same ID used for Python operations
         
         // Add MCP servers
         if (mcpServers != null) {
@@ -119,7 +119,7 @@ public class AgentDataFacadeImpl implements AgentDataFacade {
         }
 
         Agent saved = agentRepository.save(agent);
-        log.info("Created agent {} - Java ID: {}, Python ID: {}", name, saved.getId(), pythonAgentId);
+        log.info("Created agent {} with ID: {}", name, saved.getId());
         return toDto(saved);
     }
 
