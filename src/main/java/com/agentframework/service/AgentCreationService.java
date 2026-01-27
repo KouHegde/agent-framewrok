@@ -49,6 +49,9 @@ public class AgentCreationService {
         AgentSpec agentSpec = buildAgentSpec(request);
         List<String> normalizedTools = normalizeTools(agentSpec.getAllowedTools());
         String allowedToolsKey = String.join(",", normalizedTools);
+        
+        log.info("LLM selected tools: {}", agentSpec.getAllowedTools());
+        log.info("Normalized tools key: {}", allowedToolsKey);
 
         ensureDatabaseConfigured();
 
@@ -105,15 +108,20 @@ public class AgentCreationService {
     }
 
     private AgentCreationOutcome handleExistingAgent(String allowedToolsKey) {
+        log.info("Checking for existing agent with tools: {}", allowedToolsKey);
+        
         if (!agentDataFacade.existsByAllowedTools(allowedToolsKey)) {
+            log.info("No existing agent found with tools: {}", allowedToolsKey);
             return null;
         }
 
         var existing = agentDataFacade.findByAllowedTools(allowedToolsKey);
         if (existing.isEmpty()) {
+            log.warn("existsByAllowedTools returned true but findByAllowedTools returned empty!");
             return null;
         }
 
+        log.info("Found existing agent: {} with ID: {}", existing.get().name(), existing.get().id());
         AgentCreateResponse response = buildSummaryResponse(
                 existing.get(),
                 "Found existing agent with same capabilities",
