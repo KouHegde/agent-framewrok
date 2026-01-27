@@ -386,12 +386,14 @@ public class LLMService {
             
             prompt.append("For list_spaces: {} (no params, returns user's spaces)\n");
             prompt.append("For get_space: { \"spaceId\": \"Y2lzY29zcGFyazovL...\" }\n");
+            prompt.append("For list_memberships: { \"spaceId\": \"Y2lzY29zcGFyazovL...\" }\n");
             prompt.append("For list_messages: { \"spaceId\": \"Y2lzY29zcGFyazovL...\", \"max\": 20 }\n");
             prompt.append("For post_message: { \"spaceId\": \"Y2lzY29zcGFyazovL...\", \"markdown\": \"message text\" }\n");
             prompt.append("   - spaceId is REQUIRED (UUID format)\n");
             prompt.append("   - markdown is REQUIRED (the message content)\n");
             prompt.append("   - If user provides space NAME (not ID), extract the message and set spaceId to 'SPACE_NAME:spacename'\n");
-            prompt.append("For ask_space: { \"spaceId\": \"Y2lzY29zcGFyazovL...\", \"question\": \"user question\" }\n\n");
+            prompt.append("For ask_space: { \"spaceId\": \"Y2lzY29zcGFyazovL...\", \"question\": \"user question\" }\n");
+            prompt.append("For search_spaces_by_name: { \"searchTerm\": \"space name to search\" }\n\n");
             
             prompt.append("Example: 'Post hello in My Team space' →\n");
             prompt.append("  { \"spaceId\": \"SPACE_NAME:My Team\", \"markdown\": \"hello\" }\n\n");
@@ -620,7 +622,9 @@ public class LLMService {
     }
 
     private String simplifyToolNameForPrompt(String toolName) {
-        // Convert tool names like "mcp_webex_list_spaces" to readable form
+        // Convert tool names to readable form
+        // Jira/Confluence/GitHub use "mcp_server_toolname" format
+        // Webex uses simple names: "list_spaces", "post_message"
         String name = toolName;
         if (name.startsWith("mcp_")) {
             name = name.substring(4);

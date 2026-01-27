@@ -451,7 +451,7 @@ public class AgentExecutorService {
     /**
      * Extract the MCP tool name from the full registry name
      * e.g., "mcp_jira-sjc12_call_jira_rest_api" -> "call_jira_rest_api"
-     * e.g., "mcp_webex_list_spaces" -> "list_spaces"
+     * Webex tools already use simple names: "list_spaces", "post_message"
      */
     private String extractMcpToolName(String fullToolName) {
         // Known MCP tool names
@@ -469,7 +469,7 @@ public class AgentExecutorService {
                 "who_am_i", "get_person", "list_spaces", "get_space", 
                 "list_memberships", "list_messages", "get_message", "post_message",
                 "get_context_around_message", "index_space_messages", 
-                "retrieve_relevant", "ask_space"
+                "retrieve_relevant", "ask_space", "search_spaces_by_name"
         };
 
         for (String tool : knownTools) {
