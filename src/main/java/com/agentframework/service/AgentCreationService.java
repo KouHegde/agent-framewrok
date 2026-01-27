@@ -362,16 +362,20 @@ public class AgentCreationService {
             name = name.substring(4);
         }
         String[] knownTools = {
+                // Jira
                 "call_jira_rest_api", "add_labels", "get_field_info",
+                // Confluence
                 "search_confluence_pages", "get_confluence_page_by_id",
                 "get_confluence_page_by_title", "get_confluence_page_by_url",
                 "call_confluence_rest_api",
+                // GitHub
                 "call_github_graphql_for_query", "get_pull_request_diff",
                 "call_github_restapi_for_search", "call_github_graphql_for_mutation",
+                // Webex (simple names, no prefix)
                 "who_am_i", "get_person", "list_spaces", "get_space",
-                "list_memberships", "list_messages", "get_message", "post_message",
-                "get_context_around_message", "index_space_messages",
-                "retrieve_relevant", "ask_space"
+                "list_memberships", "search_spaces_by_name", "list_messages", 
+                "get_message", "post_message", "get_context_around_message", 
+                "index_space_messages", "retrieve_relevant", "ask_space"
         };
         for (String tool : knownTools) {
             if (name.endsWith(tool)) {
