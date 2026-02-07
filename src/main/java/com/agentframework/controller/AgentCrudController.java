@@ -16,10 +16,16 @@ import com.agentframework.dto.ErrorResponse;
 import com.agentframework.facade.AgentFacade;
 import com.agentframework.service.DownstreamAgentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,6 +43,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/agents")
 @RequiredArgsConstructor
+@Tag(name = "Agents", description = "Agent CRUD operations")
 public class AgentCrudController {
 
     private final AgentFacade agentFacade;
@@ -45,8 +52,16 @@ public class AgentCrudController {
 
     /**
      * Create a new agent (persisted to database).
+     * Requires: agents:write scope
      */
+    @Operation(summary = "Create agent", description = "Create a new AI agent. Requires agents:write scope.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Agent created successfully"),
+            @ApiResponse(responseCode = "200", description = "Agent already exists (returned existing)"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @PostMapping
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'agents:write')")
     public ResponseEntity<AgentCreateResponse> createAgent(@RequestBody CreateAgentRequest request) {
         log.info("Creating agent: {}", request.getName());
         var result = agentFacade.createAgent(request);
@@ -56,8 +71,15 @@ public class AgentCrudController {
 
     /**
      * List all agents.
+     * Requires: agents:read scope
      */
+    @Operation(summary = "List agents", description = "List all agents. Requires agents:read scope.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Agents retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @GetMapping
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'agents:read')")
     public ResponseEntity<AgentListResponse> listAgents(
             @RequestParam(value = "owner_id", required = false) String ownerId,
             @RequestParam(value = "tenant_id", required = false) String tenantId,
@@ -76,9 +98,18 @@ public class AgentCrudController {
 
     /**
      * Get agent by ID.
+     * Requires: agents:read scope
      */
+    @Operation(summary = "Get agent by ID", description = "Get agent details. Requires agents:read scope.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Agent retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Agent not found"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<?> getAgent(@PathVariable("id") UUID agentId) {
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'agents:read')")
+    public ResponseEntity<?> getAgent(
+            @Parameter(description = "Agent ID") @PathVariable("id") UUID agentId) {
         return agentFacade.findAgentById(agentId)
                 .map(agent -> ResponseEntity.ok(toDetail(agent, fetchDownstream(agent))))
                 .orElse(ResponseEntity.notFound().build());
@@ -86,9 +117,18 @@ public class AgentCrudController {
 
     /**
      * Get agent config by ID.
+     * Requires: agents:read scope
      */
+    @Operation(summary = "Get agent configuration", description = "Get agent configuration details. Requires agents:read scope.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Configuration retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Agent not found"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @GetMapping("/{id}/config")
-    public ResponseEntity<?> getAgentConfig(@PathVariable("id") UUID agentId) {
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'agents:read')")
+    public ResponseEntity<?> getAgentConfig(
+            @Parameter(description = "Agent ID") @PathVariable("id") UUID agentId) {
         var agentOpt = agentFacade.findAgentById(agentId);
         if (agentOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -109,9 +149,18 @@ public class AgentCrudController {
 
     /**
      * Delete an agent by ID.
+     * Requires: agents:delete scope
      */
+    @Operation(summary = "Delete agent", description = "Delete an agent. Requires agents:delete scope (ADMIN only).")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Agent deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Agent not found"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteAgent(@PathVariable("id") UUID agentId) {
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'agents:delete')")
+    public ResponseEntity<?> deleteAgent(
+            @Parameter(description = "Agent ID") @PathVariable("id") UUID agentId) {
         try {
             agentFacade.deleteAgent(agentId);
             return ResponseEntity.ok(new AgentDeleteResponse("deleted", agentId.toString()));

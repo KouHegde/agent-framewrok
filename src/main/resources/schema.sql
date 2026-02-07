@@ -134,3 +134,29 @@ CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_agent_id ON agent_mcp_servers(a
 CREATE INDEX IF NOT EXISTS idx_agent_mcp_servers_server_name ON agent_mcp_servers(server_name);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_name ON mcp_tools(name);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_category ON mcp_tools(category);
+
+-- =====================================================
+-- USERS TABLE
+-- Stores user accounts for authentication
+-- =====================================================
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    full_name TEXT,
+    tenant_id TEXT,
+    role TEXT NOT NULL DEFAULT 'USER',
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    custom_scopes TEXT,                              -- Optional custom scopes (comma-separated)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Migration: Add custom_scopes column if it doesn't exist
+ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_scopes TEXT;
+
+-- =====================================================
+-- USERS TABLE INDEXES
+-- =====================================================
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);

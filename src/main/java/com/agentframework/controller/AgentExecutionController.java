@@ -6,10 +6,16 @@ import com.agentframework.dto.ErrorResponse;
 import com.agentframework.dto.RunAgentRequest;
 import com.agentframework.facade.AgentFacade;
 import com.agentframework.service.DownstreamAgentService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,6 +29,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/agents")
 @RequiredArgsConstructor
+@Tag(name = "Agent Execution", description = "Run agents and manage sessions")
 public class AgentExecutionController {
 
     private final AgentFacade agentFacade;
@@ -36,10 +43,21 @@ public class AgentExecutionController {
      * - First request: Creates a new session and stores it
      * - Subsequent requests: Must use the same session ID or will be rejected
      * - If is_last_session=true: Clears the session after request completes
+     *
+     * Requires: agents:execute scope
      */
+    @Operation(summary = "Run agent", description = "Execute an agent with a query. Requires agents:execute scope.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Agent executed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request or agent not ready"),
+            @ApiResponse(responseCode = "404", description = "Agent not found"),
+            @ApiResponse(responseCode = "409", description = "Session conflict"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @PostMapping("/{id}/run")
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'agents:execute')")
     public ResponseEntity<?> runAgentById(
-            @PathVariable("id") UUID agentId,
+            @Parameter(description = "Agent ID") @PathVariable("id") UUID agentId,
             @RequestBody RunAgentRequest request) {
 
         // Validate agent exists
@@ -135,9 +153,18 @@ public class AgentExecutionController {
     /**
      * Clear the active session for an agent.
      * Allows starting a fresh conversation.
+     * Requires: sessions:write scope
      */
+    @Operation(summary = "Clear agent session", description = "Clear the active conversation session. Requires sessions:write scope.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Session cleared successfully"),
+            @ApiResponse(responseCode = "404", description = "Agent not found"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     @DeleteMapping("/{id}/session")
-    public ResponseEntity<?> clearSession(@PathVariable("id") UUID agentId) {
+    @PreAuthorize("@scopeChecker.hasScope(authentication, 'sessions:write')")
+    public ResponseEntity<?> clearSession(
+            @Parameter(description = "Agent ID") @PathVariable("id") UUID agentId) {
         var agentOpt = agentFacade.findAgentById(agentId);
         if (agentOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
