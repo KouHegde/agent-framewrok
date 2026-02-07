@@ -6,6 +6,8 @@ import com.agentframework.dto.ValidationErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -35,6 +37,34 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccessDeniedException(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now().toString(),
+                HttpStatus.FORBIDDEN.value(),
+                "Forbidden",
+                "Insufficient permissions to access this resource"
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiErrorResponse> handleAuthenticationException(AuthenticationException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now().toString(),
+                HttpStatus.UNAUTHORIZED.value(),
+                "Unauthorized",
+                "Authentication required"
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 
     @ExceptionHandler(Exception.class)

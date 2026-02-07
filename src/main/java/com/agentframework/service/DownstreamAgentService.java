@@ -38,6 +38,7 @@ public class DownstreamAgentService {
         WebClient client = WebClient.builder()
                 .baseUrl(downstreamAgentUrl)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
         try {
@@ -45,6 +46,7 @@ public class DownstreamAgentService {
             log.debug("Downstream create payload: {}", objectMapper.writeValueAsString(request));
             String response = client.post()
                     .uri("/agents")
+                    .accept(MediaType.APPLICATION_JSON)
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(String.class)
@@ -66,11 +68,13 @@ public class DownstreamAgentService {
         WebClient client = WebClient.builder()
                 .baseUrl(downstreamAgentUrl)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
         try {
             String response = client.get()
                     .uri("/agents/" + agentId)
+                    .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
@@ -93,6 +97,7 @@ public class DownstreamAgentService {
         WebClient client = WebClient.builder()
                 .baseUrl(downstreamAgentUrl)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
         try {
@@ -106,6 +111,7 @@ public class DownstreamAgentService {
 
             String response = client.get()
                     .uri(uri)
+                    .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
@@ -131,6 +137,7 @@ public class DownstreamAgentService {
         WebClient client = WebClient.builder()
                 .baseUrl(downstreamAgentUrl)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
         try {
@@ -142,6 +149,7 @@ public class DownstreamAgentService {
 
             String response = client.post()
                     .uri("/agents/" + request.getAgentId() + "/run")
+                    .accept(MediaType.APPLICATION_JSON)
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(String.class)
