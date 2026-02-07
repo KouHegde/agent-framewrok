@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,6 +28,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -50,6 +52,13 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
 
     private static final long TOKEN_EXPIRATION_SECONDS = 86400;  // 24 hours
+
+    /**
+     * Secret key for admin registration. Set via ADMIN_SECRET environment variable.
+     * Default is a random value that must be changed in production.
+     */
+    @Value("${admin.secret:CHANGE_ME_IN_PRODUCTION_12345}")
+    private String adminSecret;
 
     /**
      * Register a new user.
@@ -91,6 +100,76 @@ public class AuthController {
         String refreshToken = jwtService.generateRefreshToken(userDetails);
 
         // Get effective scopes
+        Set<String> scopes = getEffectiveScopes(user);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                AuthResponse.builder()
+                        .accessToken(accessToken)
+                        .refreshToken(refreshToken)
+                        .expiresIn(TOKEN_EXPIRATION_SECONDS)
+                        .userId(user.getId().toString())
+                        .email(user.getEmail())
+                        .fullName(user.getFullName())
+                        .tenantId(user.getTenantId())
+                        .role(user.getRole().name())
+                        .scopes(scopes)
+                        .build()
+        );
+    }
+
+    /**
+     * Register a new admin user.
+     * Requires X-Admin-Secret header with the correct secret key.
+     */
+    @Operation(summary = "Register admin user",
+            description = "Creates a new admin account. Requires X-Admin-Secret header with valid secret key.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Admin registered successfully",
+                    content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request data"),
+            @ApiResponse(responseCode = "401", description = "Invalid or missing admin secret"),
+            @ApiResponse(responseCode = "409", description = "Email already registered")
+    })
+    @PostMapping("/register/admin")
+    public ResponseEntity<?> registerAdmin(
+            @RequestHeader(value = "X-Admin-Secret", required = false) String providedSecret,
+            @Valid @RequestBody RegisterRequest request) {
+
+        // Validate admin secret
+        if (providedSecret == null || !providedSecret.equals(adminSecret)) {
+            log.warn("Admin registration failed: invalid or missing secret for email: {}", request.getEmail());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("Unauthorized", "Invalid or missing admin secret"));
+        }
+
+        log.info("Admin registration request for email: {}", request.getEmail());
+
+        // Check if email already exists
+        if (userRepository.existsByEmail(request.getEmail())) {
+            log.warn("Admin registration failed: email already exists: {}", request.getEmail());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new ErrorResponse("Registration failed", "Email already registered"));
+        }
+
+        // Create new admin user
+        User user = User.builder()
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .fullName(request.getFullName())
+                .tenantId(request.getTenantId())
+                .role(User.Role.ADMIN)  // Admin role
+                .enabled(true)
+                .build();
+
+        user = userRepository.save(user);
+        log.info("Admin registered successfully: {} ({})", user.getEmail(), user.getId());
+
+        // Generate tokens
+        UserDetailsImpl userDetails = new UserDetailsImpl(user);
+        String accessToken = jwtService.generateToken(userDetails);
+        String refreshToken = jwtService.generateRefreshToken(userDetails);
+
+        // Get effective scopes (admin has all)
         Set<String> scopes = getEffectiveScopes(user);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
