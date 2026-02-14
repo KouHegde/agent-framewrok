@@ -7,6 +7,13 @@ build/
 *.iml
 out/
 
+# Metals (Scala/Java LSP)
+.metals/
+.bloop/
+
+# VS Code
+.vscode/
+
 # Mac
 .DS_Store
 
@@ -16,3 +23,13 @@ out/
 # JVM crash logs
 hs_err_pid*
 replay_pid*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+venv/
+.venv/
+*.egg

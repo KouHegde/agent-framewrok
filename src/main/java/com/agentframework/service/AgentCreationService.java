@@ -81,11 +81,141 @@ public class AgentCreationService {
         return new AgentCreationOutcome(response, true);
     }
 
+    /**
+     * Build agent spec, using selected tools from request or falling back to auto-selection.
+     */
     private AgentSpec buildAgentSpec(CreateAgentRequest request) {
-        AgentSpec agentSpec = metaAgentService.buildAgentSpec(request);
-        log.info("Selected MCP tools: {}", agentSpec.getAllowedTools());
+        AgentSpec agentSpec;
+        
+        if (request.hasSelectedTools()) {
+            // Use tools explicitly selected by the user from UI
+            log.info("Using user-selected tools: {}", request.getSelectedTools());
+            agentSpec = buildAgentSpecWithSelectedTools(request);
+            
+            // Log prediction linkage if available
+            if (request.getPredictionId() != null) {
+                log.info("Tools were selected from prediction: {}", request.getPredictionId());
+            }
+        } else if (request.shouldUseAutoSelection()) {
+            // Fallback to automatic tool selection (existing behavior)
+            log.info("No tools selected, using automatic tool selection");
+            agentSpec = metaAgentService.buildAgentSpec(request);
+        } else {
+            // Skip auto-selection was set but no tools provided
+            throw new IllegalArgumentException(
+                    "No tools selected and skip_auto_selection is true. " +
+                    "Either provide selected_tools or set skip_auto_selection to false."
+            );
+        }
+        
+        log.info("Final selected MCP tools: {}", agentSpec.getAllowedTools());
         toolRegistry.ensureToolsPersisted(agentSpec.getAllowedTools());
         return agentSpec;
+    }
+    
+    /**
+     * Build agent spec using user-selected tools from the request.
+     */
+    private AgentSpec buildAgentSpecWithSelectedTools(CreateAgentRequest request) {
+        List<String> selectedTools = request.getSelectedTools();
+        
+        // Validate selected tools exist in registry
+        List<String> validTools = new java.util.ArrayList<>();
+        List<String> invalidTools = new java.util.ArrayList<>();
+        
+        for (String toolName : selectedTools) {
+            if (toolRegistry.exists(toolName)) {
+                validTools.add(toolName);
+            } else {
+                invalidTools.add(toolName);
+                log.warn("Selected tool not found in registry: {}", toolName);
+            }
+        }
+        
+        if (validTools.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "None of the selected tools are valid. Invalid tools: " + invalidTools
+            );
+        }
+        
+        if (!invalidTools.isEmpty()) {
+            log.warn("Some selected tools were invalid and will be ignored: {}", invalidTools);
+        }
+        
+        // Determine permissions and execution mode based on selected tools
+        List<String> permissions = determinePermissionsFromTools(validTools);
+        String executionMode = determineExecutionModeFromTools(validTools);
+        
+        // Generate goal from description
+        String goal = request.getDescription() != null 
+                ? request.getDescription() 
+                : "Agent with selected tools: " + String.join(", ", validTools);
+        
+        // Build expected inputs from selected tools
+        List<String> expectedInputs = extractExpectedInputsFromTools(validTools);
+        
+        return AgentSpec.builder()
+                .agentName(request.getName())
+                .goal(goal)
+                .allowedTools(validTools)
+                .executionMode(executionMode)
+                .permissions(permissions)
+                .expectedInputs(expectedInputs)
+                .build();
+    }
+    
+    /**
+     * Determine permissions based on selected tools.
+     */
+    private List<String> determinePermissionsFromTools(List<String> tools) {
+        List<String> permissions = new java.util.ArrayList<>();
+        
+        // Check if any tool requires write permissions
+        List<String> writeIndicators = List.of("post_", "create", "update", "delete", "add_", "assign");
+        boolean needsWrite = tools.stream()
+                .anyMatch(tool -> writeIndicators.stream().anyMatch(tool.toLowerCase()::contains));
+        
+        if (needsWrite) {
+            permissions.add("write");
+        } else {
+            permissions.add("read_only");
+        }
+        
+        return permissions;
+    }
+    
+    /**
+     * Determine execution mode based on selected tools.
+     */
+    private String determineExecutionModeFromTools(List<String> tools) {
+        // If multiple tools from different categories, use dynamic mode
+        java.util.Set<String> categories = tools.stream()
+                .map(tool -> {
+                    MCPTool mcpTool = toolRegistry.getTool(tool).orElse(null);
+                    return mcpTool != null ? mcpTool.getCategory() : "unknown";
+                })
+                .collect(java.util.stream.Collectors.toSet());
+        
+        return categories.size() > 1 ? "dynamic" : "static";
+    }
+    
+    /**
+     * Extract expected inputs from selected tools.
+     */
+    private List<String> extractExpectedInputsFromTools(List<String> tools) {
+        java.util.Set<String> inputs = new java.util.LinkedHashSet<>();
+        
+        for (String toolName : tools) {
+            toolRegistry.getTool(toolName).ifPresent(tool -> {
+                inputs.addAll(tool.getRequiredInputs());
+            });
+        }
+        
+        if (inputs.isEmpty()) {
+            inputs.add("query");
+        }
+        
+        return new java.util.ArrayList<>(inputs);
     }
 
     private List<String> normalizeTools(List<String> tools) {

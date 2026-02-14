@@ -46,3 +46,41 @@ logging:
 downstream:
   agent:
     url: ${DOWNSTREAM_AGENT_URL:https://4df2612f27c1.ngrok-free.app}
+
+# =====================================================
+# ML SERVICE CONFIGURATION
+# Python microservice for ML-based tool prediction
+# =====================================================
+ml:
+  service:
+    # URL of the Python ML service
+    url: ${ML_SERVICE_URL:http://localhost:8001}
+    # Enable/disable ML service integration
+    enabled: ${ML_SERVICE_ENABLED:false}
+    # Timeout for ML service calls (in milliseconds)
+    timeout: ${ML_SERVICE_TIMEOUT:5000}
+
+# =====================================================
+# TOOL PREDICTION CONFIGURATION
+# =====================================================
+prediction:
+  # Default prediction method: keyword, llm, cosine, ml_classifier, hybrid
+  default-method: ${PREDICTION_METHOD:hybrid}
+  # Minimum confidence threshold for predictions
+  min-confidence: ${PREDICTION_MIN_CONFIDENCE:0.5}
+  # Maximum number of tools to return
+  max-tools: ${PREDICTION_MAX_TOOLS:5}
+  # Enable caching of predictions
+  cache:
+    enabled: ${PREDICTION_CACHE_ENABLED:true}
+    ttl-seconds: ${PREDICTION_CACHE_TTL:300}
+
+# =====================================================
+# ASYNC CONFIGURATION
+# =====================================================
+spring.task.execution:
+  pool:
+    core-size: 4
+    max-size: 16
+    queue-capacity: 100
+  thread-name-prefix: "tool-prediction-"
