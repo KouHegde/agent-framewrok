@@ -1,27 +1,53 @@
+# =====================================================
+# AGENT FRAMEWORK - APPLICATION CONFIGURATION
+# =====================================================
+# All values are configured via environment variables.
+# See .env.example for the full list of variables.
+
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   application:
-    name: agent-framework
+    name: ${APP_NAME:agent-framework}
 
+  # Database Configuration
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:none}
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: ${HIBERNATE_FORMAT_SQL:true}
+
+# =====================================================
+# LLM CONFIGURATION
+# =====================================================
 llm:
-  provider: ${LLM_PROVIDER:none}
+  provider: ${LLM_PROVIDER:}
   enabled: ${LLM_ENABLED:false}
   api:
     url: ${LLM_API_URL:}
     key: ${LLM_API_KEY:}
   model: ${LLM_MODEL:}
 
-
+# =====================================================
+# MCP SERVERS CONFIGURATION
+# =====================================================
 mcp:
-  # Enable dynamic tool discovery from MCP servers at startup
   discovery:
-    enabled: ${MCP_DISCOVERY_ENABLED:false}  # Set to true to auto-discover tools
+    enabled: ${MCP_DISCOVERY_ENABLED:false}
 
   jira:
-    url: ${MCP_JIRA_URL:http://localhost:8081/mcp-webex-jira}
+    url: ${MCP_JIRA_URL:}
     pat-token: ${JIRA_PAT_TOKEN:}
+
   confluence:
     url: ${MCP_CONFLUENCE_URL:}
     pat-token: ${CONFLUENCE_PAT_TOKEN:}
@@ -30,57 +56,81 @@ mcp:
     url: ${MCP_GITHUB_URL:}
     pat-token: ${GITHUB_PAT_TOKEN:}
 
-  # Webex MCP Server (REST API pattern - different from JSON-RPC)
-  # Endpoint pattern: /mcp/tools/{tool_name}
-  # Auth: X-Webex-Token header
   webex:
-    url: ${MCP_WEBEX_URL:https://486bb93842a3.ngrok-free.app}
+    url: ${MCP_WEBEX_URL:}
     token: ${WEBEX_TOKEN:}
 
-logging:
-  level:
-    root: INFO
-    com.agentframework: DEBUG
-    org.springframework.web.reactive.function.client: DEBUG
+# =====================================================
+# PYTHON AGENT BRAIN SERVICE
+# =====================================================
+agent:
+  brain:
+    enabled: ${AGENT_BRAIN_ENABLED:false}
+    url: ${AGENT_BRAIN_URL:}
 
 downstream:
   agent:
-    url: ${DOWNSTREAM_AGENT_URL:https://4df2612f27c1.ngrok-free.app}
+    url: ${DOWNSTREAM_AGENT_URL:}
+
+# =====================================================
+# LOGGING CONFIGURATION
+# =====================================================
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.agentframework: ${LOG_LEVEL_APP:DEBUG}
+    org.springframework.web.reactive.function.client: ${LOG_LEVEL_WEBCLIENT:DEBUG}
+
+# =====================================================
+# OPENAPI / SWAGGER CONFIGURATION
+# =====================================================
+springdoc:
+  api-docs:
+    path: ${SWAGGER_API_DOCS_PATH:/v3/api-docs}
+  swagger-ui:
+    path: ${SWAGGER_UI_PATH:/swagger-ui.html}
+    operationsSorter: method
+    tagsSorter: alpha
+    tryItOutEnabled: true
+    filter: true
+
+# =====================================================
+# JWT / SECURITY CONFIGURATION
+# =====================================================
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+admin:
+  secret: ${ADMIN_SECRET:}
 
 # =====================================================
 # ML SERVICE CONFIGURATION
-# Python microservice for ML-based tool prediction
 # =====================================================
 ml:
   service:
-    # URL of the Python ML service
-    url: ${ML_SERVICE_URL:http://localhost:8001}
-    # Enable/disable ML service integration
+    url: ${ML_SERVICE_URL:}
     enabled: ${ML_SERVICE_ENABLED:false}
-    # Timeout for ML service calls (in milliseconds)
     timeout: ${ML_SERVICE_TIMEOUT:5000}
 
 # =====================================================
 # TOOL PREDICTION CONFIGURATION
 # =====================================================
 prediction:
-  # Default prediction method: keyword, llm, cosine, ml_classifier, hybrid
   default-method: ${PREDICTION_METHOD:hybrid}
-  # Minimum confidence threshold for predictions
   min-confidence: ${PREDICTION_MIN_CONFIDENCE:0.5}
-  # Maximum number of tools to return
   max-tools: ${PREDICTION_MAX_TOOLS:5}
-  # Enable caching of predictions
   cache:
     enabled: ${PREDICTION_CACHE_ENABLED:true}
     ttl-seconds: ${PREDICTION_CACHE_TTL:300}
 
 # =====================================================
-# ASYNC CONFIGURATION
+# ASYNC / THREAD POOL CONFIGURATION
 # =====================================================
 spring.task.execution:
   pool:
-    core-size: 4
-    max-size: 16
-    queue-capacity: 100
+    core-size: ${THREAD_POOL_CORE_SIZE:4}
+    max-size: ${THREAD_POOL_MAX_SIZE:16}
+    queue-capacity: ${THREAD_POOL_QUEUE_CAPACITY:100}
   thread-name-prefix: "tool-prediction-"

@@ -1,28 +1,126 @@
+# =====================================================
+# AGENT FRAMEWORK - DOCKER COMPOSE
+# =====================================================
+# Usage: 
+#   1. Copy .env.example to .env and fill in values
+#   2. Run: docker compose up -d
+
 services:
+  # =====================================================
+  # PostgreSQL Database with pgvector
+  # =====================================================
   postgres:
-    # Using pgvector image for vector similarity search support
     image: pgvector/pgvector:pg16
     container_name: agent-framework-db
     environment:
-      POSTGRES_DB: agent_framework
-      POSTGRES_USER: agent_user
-      POSTGRES_PASSWORD: agent_pass
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
+      POSTGRES_USER: ${DB_USER:?DB_USER is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     ports:
-      - "${DB_PORT:-5433}:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent_user -d agent_framework"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - agent-network
 
-  # ML Prediction Service (Python) - will be implemented later
+  # =====================================================
+  # Java Agent Framework Application
+  # =====================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-framework-app
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      # Server
+      SERVER_PORT: 8080
+      APP_NAME: ${APP_NAME:-agent-framework}
+      
+      # Database
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-agent_framework}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:?DB_USER is required}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-none}
+      JPA_SHOW_SQL: ${JPA_SHOW_SQL:-false}
+      HIBERNATE_FORMAT_SQL: ${HIBERNATE_FORMAT_SQL:-true}
+      
+      # LLM Configuration
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      LLM_API_URL: ${LLM_API_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      
+      # MCP Servers
+      MCP_DISCOVERY_ENABLED: ${MCP_DISCOVERY_ENABLED:-true}
+      MCP_JIRA_URL: ${MCP_JIRA_URL:-}
+      JIRA_PAT_TOKEN: ${JIRA_PAT_TOKEN:-}
+      MCP_CONFLUENCE_URL: ${MCP_CONFLUENCE_URL:-}
+      CONFLUENCE_PAT_TOKEN: ${CONFLUENCE_PAT_TOKEN:-}
+      MCP_GITHUB_URL: ${MCP_GITHUB_URL:-}
+      GITHUB_PAT_TOKEN: ${GITHUB_PAT_TOKEN:-}
+      MCP_WEBEX_URL: ${MCP_WEBEX_URL:-}
+      WEBEX_TOKEN: ${WEBEX_TOKEN:-}
+      
+      # Python Agent Brain
+      AGENT_BRAIN_ENABLED: ${AGENT_BRAIN_ENABLED:-true}
+      AGENT_BRAIN_URL: ${AGENT_BRAIN_URL:-}
+      DOWNSTREAM_AGENT_URL: ${DOWNSTREAM_AGENT_URL:-}
+      
+      # Logging
+      LOG_LEVEL_ROOT: ${LOG_LEVEL_ROOT:-INFO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP:-DEBUG}
+      LOG_LEVEL_WEBCLIENT: ${LOG_LEVEL_WEBCLIENT:-DEBUG}
+      
+      # Swagger
+      SWAGGER_API_DOCS_PATH: ${SWAGGER_API_DOCS_PATH:-/v3/api-docs}
+      SWAGGER_UI_PATH: ${SWAGGER_UI_PATH:-/swagger-ui.html}
+      
+      # JWT / Security
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-604800000}
+      ADMIN_SECRET: ${ADMIN_SECRET:?ADMIN_SECRET is required}
+      
+      # ML Service
+      ML_SERVICE_URL: ${ML_SERVICE_URL:-http://ml-service:8001}
+      ML_SERVICE_ENABLED: ${ML_SERVICE_ENABLED:-false}
+      ML_SERVICE_TIMEOUT: ${ML_SERVICE_TIMEOUT:-5000}
+      
+      # Prediction
+      PREDICTION_METHOD: ${PREDICTION_METHOD:-hybrid}
+      PREDICTION_MIN_CONFIDENCE: ${PREDICTION_MIN_CONFIDENCE:-0.5}
+      PREDICTION_MAX_TOOLS: ${PREDICTION_MAX_TOOLS:-5}
+      PREDICTION_CACHE_ENABLED: ${PREDICTION_CACHE_ENABLED:-true}
+      PREDICTION_CACHE_TTL: ${PREDICTION_CACHE_TTL:-300}
+      
+      # Thread Pool
+      THREAD_POOL_CORE_SIZE: ${THREAD_POOL_CORE_SIZE:-4}
+      THREAD_POOL_MAX_SIZE: ${THREAD_POOL_MAX_SIZE:-16}
+      THREAD_POOL_QUEUE_CAPACITY: ${THREAD_POOL_QUEUE_CAPACITY:-100}
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # =====================================================
+  # ML Prediction Service (Optional)
+  # =====================================================
   # ml-service:
   #   build: ./ml-service
   #   container_name: agent-framework-ml
   #   environment:
-  #     DATABASE_URL: postgresql://agent_user:agent_pass@postgres:5432/agent_framework
+  #     DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
   #     MODEL_PATH: /app/models
   #   ports:
   #     - "8001:8001"
@@ -31,7 +129,13 @@ services:
   #       condition: service_healthy
   #   volumes:
   #     - ml_models:/app/models
+  #   networks:
+  #     - agent-network
 
 volumes:
   postgres_data:
   # ml_models:
+
+networks:
+  agent-network:
+    driver: bridge

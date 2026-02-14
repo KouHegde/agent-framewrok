@@ -17,6 +17,11 @@ out/
 # Mac
 .DS_Store
 
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
 # Logs
 *.log
 

@@ -1,0 +1,46 @@
+# Build outputs
+build/
+*/build/
+.gradle/
+*/.gradle/
+bin/
+out/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Local configuration
+.env
+.env.local
+*.local
+
+# Test files
+src/test/
+*/src/test/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
